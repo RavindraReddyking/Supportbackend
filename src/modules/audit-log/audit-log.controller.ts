@@ -9,7 +9,7 @@ export class AuditLogController {
 
   @Get()
   list() {
-    return this.auditLogService.list(200);
+    return this.auditLogService.list(20000);
   }
 
   // Return ALL logs (90 days)
