@@ -1,0 +1,211 @@
+import { createHash, randomUUID } from 'crypto';
+import type { Request, Response } from 'express';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { CookieOptions } from 'express';
+import { AuthSession, SessionUser } from './auth.types';
+import { SessionStoreService } from './session-store/session-store.service';
+import { AuthRepository } from './auth.repository';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly sessionStore: SessionStoreService,
+    private readonly authRepository: AuthRepository,
+  ) {}
+
+  getCookieName(): string {
+    return this.config.get<string>('COOKIE_NAME', 'JSESSIONID');
+  }
+
+  getIdleTimeoutMs(): number {
+    return 24 * 60 * 60 * 1000;
+  }
+
+  getSessionStoreKind(): 'memory' | 'redis' {
+    return this.sessionStore.kind();
+  }
+
+  isProduction(): boolean {
+    return this.config.get<string>('NODE_ENV', 'development') === 'production';
+  }
+
+  getSessionCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true,
+      path: '/',
+      signed: true,
+      maxAge: this.getIdleTimeoutMs(),
+    };
+  }
+
+  getMockUser(): SessionUser {
+    const adminEmail =
+      this.getAdminEmails()[0] ||
+      this.config.get<string>('AUTH_MOCK_EMAIL', 'ravindra.munnangi@arrise.co');
+
+    return {
+      email: adminEmail,
+      name: this.config.get<string>('AUTH_MOCK_NAME', 'Ravindra Munnangi'),
+      role: this.isAdminEmail(adminEmail) ? 'ADMIN' : 'USER',
+    };
+  }
+
+  getAdminEmails(): string[] {
+    return (this.config.get<string>('AUTH_ADMIN_USERS', '') || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  isAdminEmail(email: string): boolean {
+    return this.getAdminEmails().includes((email || '').trim().toLowerCase());
+  }
+
+  hashPassword(password: string): string {
+    return createHash('sha1').update(password, 'utf8').digest('hex').toLowerCase();
+  }
+
+  async validatePortalUser(email: string, password: string): Promise<SessionUser | null> {
+    const identifier = (email || '').trim();
+    const user = await this.authRepository.findByEmail(identifier);
+
+
+    if (!user?.emailAddress || !user?.passhash) {
+      return null;
+    }
+
+    const hashedInput = this.hashPassword((password || '').trim());
+
+
+    if (hashedInput !== String(user.passhash).trim().toLowerCase()) {
+      return null;
+    }
+
+    const normalizedEmail = user.emailAddress.trim().toLowerCase();
+
+    return {
+      email: normalizedEmail,
+      name: user.screenName?.trim() || normalizedEmail,
+      role: this.isAdminEmail(normalizedEmail) ? 'ADMIN' : 'USER',
+    };
+  }
+
+  private getSignedToken(request: Request): string | null {
+    const cookieName = this.getCookieName();
+    const signed = request.signedCookies?.[cookieName];
+    if (typeof signed === 'string' && signed.trim()) {
+      return signed.trim();
+    }
+
+    const fallback = request.cookies?.[cookieName];
+    return typeof fallback === 'string' && fallback.trim() ? fallback.trim() : null;
+  }
+
+  async resolveSessionFromRequest(request: Request, touch: boolean): Promise<AuthSession | null> {
+    const token = this.getSignedToken(request);
+    if (!token) return null;
+
+    const session = await this.sessionStore.get(token);
+    if (!session) return null;
+
+    if (session.expiresAt <= Date.now()) {
+      await this.sessionStore.delete(token);
+      return null;
+    }
+
+    if (touch) {
+      return this.sessionStore.touch(session, this.getIdleTimeoutMs());
+    }
+
+    return session;
+  }
+
+  async createSession(user: SessionUser): Promise<AuthSession> {
+    const now = Date.now();
+    const session: AuthSession = {
+      token: randomUUID(),
+      user,
+      createdAt: now,
+      lastActivityAt: now,
+      expiresAt: now + this.getIdleTimeoutMs(),
+    };
+
+    await this.sessionStore.set(session);
+    return session;
+  }
+
+  attachSessionCookie(response: Response, session: AuthSession) {
+    response.cookie(this.getCookieName(), session.token, this.getSessionCookieOptions());
+  }
+
+  async clearSession(response: Response, request?: Request) {
+    const token = request ? this.getSignedToken(request) : null;
+    if (token) {
+      await this.sessionStore.delete(token);
+    }
+
+    response.clearCookie(this.getCookieName(), {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: this.isProduction(),
+      signed: true,
+    });
+  }
+
+  getAzureAuthorizeUrl(returnTo?: string): string {
+    const tenantId = this.config.get<string>('AZURE_TENANT_ID', '');
+    const clientId = this.config.get<string>('AZURE_CLIENT_ID', '');
+    const redirectUri = this.config.get<string>('AZURE_REDIRECT_URI', '');
+
+    const state = Buffer.from(
+      JSON.stringify({ returnTo: returnTo || '/home' }),
+      'utf8',
+    ).toString('base64url');
+
+    if (!tenantId || !clientId || !redirectUri) {
+      const callbackUrl = `${this.getBackendBaseUrl()}/api/auth/azure/callback`;
+      return `${callbackUrl}?state=${encodeURIComponent(state)}`;
+    }
+
+    const base = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`;
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      response_mode: 'query',
+      scope: 'openid profile email',
+      state,
+    });
+
+    return `${base}?${params.toString()}`;
+  }
+
+  parseReturnTo(rawState?: string): string {
+    if (!rawState) return '/home';
+
+    try {
+      const decoded = JSON.parse(Buffer.from(rawState, 'base64url').toString('utf8')) as {
+        returnTo?: unknown;
+      };
+
+      return typeof decoded.returnTo === 'string' && decoded.returnTo.startsWith('/')
+        ? decoded.returnTo
+        : '/home';
+    } catch {
+      return '/home';
+    }
+  }
+
+  getFrontendBaseUrl(): string {
+    return this.config.get<string>('FRONTEND_URL', 'http://localhost:3000').replace(/\/$/, '');
+  }
+
+  getBackendBaseUrl(): string {
+    return this.config.get<string>('BACKEND_URL', 'http://localhost:3001').replace(/\/$/, '');
+  }
+}

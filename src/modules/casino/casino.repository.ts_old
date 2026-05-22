@@ -1,0 +1,34 @@
+import { Injectable } from '@nestjs/common';
+import * as sql from 'mssql';
+import { DatabaseService } from '../../database/database.service';
+
+@Injectable()
+export class CasinoRepository {
+  constructor(private readonly database: DatabaseService) {}
+
+  async getCasinoDetails(casinoId: string) {
+    const schema = this.database.schema;
+
+    return this.database.query(
+      (request) => request.input('casinoid', sql.VarChar, casinoId),
+      ` SELECT
+    c.casino_id,
+    c.casino_desc,
+    CONVERT(NVARCHAR(MAX), cc.conf_data) AS conf_data,
+    oc.extra_data_on_bet,
+    oc.extra_data_on_win,
+    oc.extra_data_on_df,
+    oc.env,
+    e.name AS envname
+FROM ${schema}.casino c
+LEFT JOIN ${schema}.casinoconfig cc
+    ON c.casino_id = cc.casino_id
+LEFT JOIN ${schema}.onewalletcasino oc
+    ON oc.casino_id = c.casino_id
+LEFT JOIN ${schema}.environment e
+    ON e.env_id = oc.env
+WHERE c.casino_id = @casinoid
+      `,
+    );
+  }
+}

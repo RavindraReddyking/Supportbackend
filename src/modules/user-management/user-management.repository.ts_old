@@ -1,0 +1,79 @@
+import { Injectable } from '@nestjs/common';
+import * as sql from 'mssql';
+import { DatabaseService } from '../../database/database.service';
+import { PortalUserLookup } from './user-management.types';
+
+@Injectable()
+export class UserManagementRepository {
+  constructor(private readonly database: DatabaseService) {}
+
+  async findUser(emailAddress?: string, userId?: string): Promise<PortalUserLookup | null> {
+    const schema = this.database.schema;
+
+    const normalizedEmail = (emailAddress ?? '').trim();
+    const normalizedUserId = (userId ?? '').trim();
+
+    const result = await this.database.query(
+      (request) =>
+        request
+          .input('email_address', sql.VarChar(100), normalizedEmail || null)
+          .input('user_id', sql.VarChar(100), normalizedUserId || null),
+      `
+      IF OBJECT_ID('${schema}.casinouser') IS NULL
+         OR OBJECT_ID('${schema}.casino') IS NULL
+         OR OBJECT_ID('${schema}.OneWalletCasino') IS NULL
+         OR OBJECT_ID('${schema}.Environment') IS NULL
+      BEGIN
+        SELECT
+          CAST(NULL AS VARCHAR(100)) AS userId,
+          CAST(NULL AS VARCHAR(100)) AS emailAddress,
+          CAST(NULL AS VARCHAR(200)) AS screenName,
+          CAST(NULL AS VARCHAR(100)) AS casinoId,
+          CAST(NULL AS VARCHAR(255)) AS casinoName,
+          CAST(NULL AS VARCHAR(255)) AS className,
+          CAST(NULL AS VARCHAR(100)) AS env,
+          CAST(NULL AS VARCHAR(255)) AS environmentName,
+          'Required table not found' AS status;
+        RETURN;
+      END;
+
+      SELECT TOP 1
+        TRY_CONVERT(VARCHAR(100), cu.user_id) AS userId,
+        TRY_CONVERT(VARCHAR(100), cu.email_address) AS emailAddress,
+        TRY_CONVERT(VARCHAR(200), cu.screen_name) AS screenName,
+        TRY_CONVERT(VARCHAR(100), c.casino_id) AS casinoId,
+        TRY_CONVERT(VARCHAR(255), c.casino_desc) AS casinoName,
+        TRY_CONVERT(VARCHAR(255), owc.class_name) AS className,
+        TRY_CONVERT(VARCHAR(100), owc.env) AS env,
+        TRY_CONVERT(VARCHAR(255), e.name) AS environmentName,
+        'FOUND' AS status
+      FROM ${schema}.casinouser cu WITH (NOLOCK)
+      INNER JOIN ${schema}.casino c WITH (NOLOCK)
+        ON c.casino_id = cu.casino_id
+      INNER JOIN ${schema}.OneWalletCasino owc WITH (NOLOCK)
+        ON owc.casino_id = cu.casino_id
+      INNER JOIN ${schema}.Environment e WITH (NOLOCK)
+        ON e.env_id = owc.env
+      WHERE
+        (@user_id IS NULL OR TRY_CONVERT(VARCHAR(100), cu.user_id) = @user_id)
+        AND
+        (@email_address IS NULL OR TRY_CONVERT(VARCHAR(100), cu.email_address) = @email_address)
+      ORDER BY c.casino_id;
+      `,
+    );
+
+    return (result.recordset?.[0] as PortalUserLookup | undefined) ?? null;
+  }
+
+  async findByEmail(emailAddress: string): Promise<PortalUserLookup | null> {
+    return this.findUser(emailAddress, undefined);
+  }
+
+  async findByUserId(userId: string): Promise<PortalUserLookup | null> {
+    return this.findUser(undefined, userId);
+  }
+
+  async findByUserIdAndEmail(userId: string, emailAddress: string): Promise<PortalUserLookup | null> {
+    return this.findUser(emailAddress, userId);
+  }
+}
