@@ -66,14 +66,21 @@ export class PlayerBetLogsService {
       case 'BLACKJACK':
         rawLogs = await this.repo.searchBlackjackGameLogs(params);
         break;
+
       case 'BACCARAT':
         rawLogs = await this.repo.searchBaccaratGameLogs(params);
         break;
+
       case 'CRASH':
         rawLogs = await this.repo.searchCrashGameLogs(params);
         break;
+
+      case 'OTHER':
+        rawLogs = await this.repo.searchOtherGameLogs(params); // ✅ NEW SUPPORT
+        break;
+
       default:
-        rawLogs = await this.repo.searchGenericGameLogs(params);
+        rawLogs = await this.repo.searchGenericGameLogs(params); // ✅ fallback only
         break;
     }
 
@@ -154,7 +161,7 @@ export class PlayerBetLogsService {
           };
         })
         .filter((log) => Boolean(log.serviceMethod)),
-);
+    );
   }
 
   private mapGameLogs(logs: any[]): GameLogItem[] {
