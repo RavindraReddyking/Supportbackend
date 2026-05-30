@@ -76,11 +76,11 @@ export class PlayerBetLogsService {
         break;
 
       case 'OTHER':
-        rawLogs = await this.repo.searchOtherGameLogs(params); // ✅ NEW SUPPORT
+        rawLogs = await this.repo.searchOtherGameLogs(params);
         break;
 
       default:
-        rawLogs = await this.repo.searchGenericGameLogs(params); // ✅ fallback only
+        rawLogs = await this.repo.searchGenericGameLogs(params);
         break;
     }
 
@@ -160,7 +160,16 @@ export class PlayerBetLogsService {
             raw: log,
           };
         })
-        .filter((log) => Boolean(log.serviceMethod)),
+
+        // ✅ ✅ FINAL FIX HERE
+        .filter((log) => {
+          const message = log.message || '';
+
+          return (
+            Boolean(log.serviceMethod) || // existing platform logs
+            message.includes('WalletReqStatsLoggerImpl') // ✅ include ALL wallet logs
+          );
+        }),
     );
   }
 
@@ -226,7 +235,6 @@ export class PlayerBetLogsService {
         return String(value);
       }
     }
-
     return '';
   }
 

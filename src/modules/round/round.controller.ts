@@ -74,4 +74,46 @@ export class RoundController {
 
     return response;
   }
+
+  @Get('crashgamesdata')
+async getCrashGamesData(
+  @Query() dto: RoundLookupDto,
+  @Query('gameType') gameType: string,
+  @Req() request: Request,
+) {
+  const normalized = dto.normalized();
+
+  // ✅ IMPORTANT FIX
+  const params = {
+    ...normalized,
+    gameType,
+  };
+
+  const type = gameType?.trim()?.toLowerCase();
+
+  let response;
+
+  if (type === 'highflyer') {
+    response = await this.roundService.getHighflyerData(params);
+  } else if (type === 'spaceman' || type === 'bigbass') {
+    response = await this.roundService.getCrashCommonData(params);
+  } else {
+    throw new Error(`Unsupported gameType: ${gameType}`);
+  }
+
+  this.auditLogService.capture(request, {
+    action: 'CRASH_GAME_SEARCH',
+    entityType: 'crash-game',
+    entityValue:
+      normalized.roundId ||
+      `${normalized.gameId}|${normalized.userId}`,
+    status: 'SUCCESS',
+    metadata: {
+      target: 'crashgamesdata',
+      gameType,
+    },
+  });
+
+  return response;
+}
 }
