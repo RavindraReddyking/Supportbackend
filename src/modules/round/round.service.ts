@@ -52,18 +52,25 @@ export class RoundService {
     };
   }
 
-  async getTptTable(params: RoundLookupParams): Promise<any> {
-    this.validate(params);
-    const result = await this.repository.getTptTable(params);
 
-    return {
-      success: true,
-      api: 'tpttableinfo',
-      mode: params.roundId ? 'RoundId' : 'GameIdUserId',
-      count: result.recordset.length,
-      data: result.recordset,
-    };
-  }
+async getTptTable(params: RoundLookupParams): Promise<any> {
+  this.validate(params);
+  const result = await this.repository.getTptTable(params);
+
+  const sortedData = result.recordset.sort(
+    (a: any, b: any) =>
+      new Date(a.trans_date).getTime() - new Date(b.trans_date).getTime()
+  );
+
+  return {
+    success: true,
+    api: 'tpttableinfo',
+    mode: params.roundId ? 'RoundId' : 'GameIdUserId',
+    count: sortedData.length,
+    data: sortedData,
+  };
+}
+
 
   async getCardDetails(params: RoundLookupParams): Promise<any> {
     this.validate(params);
@@ -110,61 +117,12 @@ async getCrashCommonData(params: CrashGameParams): Promise<any> {
 
   const result = await this.repository.getCrashCommonData(params);
 
-  const mappedData = result.recordset.map((row: any) => ({
-    ...row, // ✅ keep ALL DB columns
-
-    // ✅ Full Auto Cashout
-    Full_AutoCashout_OptedMultiplier:
-      row.multiplier === -1 ? 'Not Opted' : row.multiplier,
-
-    // ✅ Half Auto Cashout
-    Half_AutoCashout_OptedMultiplier:
-      row.halfmultiplier === -1 ? 'Not Opted' : row.halfmultiplier,
-
-    // ✅ Half Cashout
-    HalfCashout_Type:
-      row.HC_TYPE === null ? 'Not Cashed Out' : row.HC_TYPE,
-
-    // ✅ Full Cashout
-    FullCashout_Type:
-      row.CO_TYPE === null ? 'Not Cashed Out' : row.CO_TYPE,
-
-    // ✅ Bet Amounts
-    HalfCashoutBetAmount: row.HC_BetAmount,
-    FullCashoutBetAmount: row.FC_BetAmount,
-
-    // ✅ Payouts
-    HalfCashoutPayout_Amount: row.HC_CashPayOut,
-    FullCashoutPayout_Amount: row.FC_CashPayOut,
-
-    // ✅ Requested multipliers
-    HalfCashoutRequested_Multiplier:
-      row.HC_Requested === null ? 'Not Requested' : row.HC_Requested,
-
-    FullCashoutRequested_Multiplier:
-      row.FC_Requested === null ? 'Not Requested' : row.FC_Requested,
-
-    // ✅ Request Times
-    HalfCashoutRequestTime:
-      row.HC_RequestTime === null ? 'Not Requested' : row.HC_RequestTime,
-
-    FullCashoutRequestTime:
-      row.FC_RequestTime === null ? 'Not Requested' : row.FC_RequestTime,
-
-    // ✅ Settle Times
-    HalfCashoutSettleTime:
-      row.HC_SettleTime === null ? 'NA' : row.HC_SettleTime,
-
-    FullCashoutSettleTime:
-      row.FC_SettleTime === null ? 'NA' : row.FC_SettleTime,
-  }));
-
   return {
     success: true,
     api: 'crashgamesdata-common',
     mode: params.roundId ? 'RoundId' : 'GameIdUserId',
-    count: mappedData.length,
-    data: mappedData,
+    count: result.recordset.length,
+    data: result.recordset,
   };
 }
 
