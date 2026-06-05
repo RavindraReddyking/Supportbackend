@@ -10,6 +10,10 @@ import { RoundModule } from './modules/round/round.module';
 import { UserManagementModule } from './modules/user-management/user-management.module';
 import { PlayerBetLogsModule } from './modules/player-bet-logs/player-bet-logs.module';
 
+// ✅ ADD THESE
+import { VaultService } from './vault.service';
+import { VaultLoaderService } from './vault-loader.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -23,5 +27,8 @@ import { PlayerBetLogsModule } from './modules/player-bet-logs/player-bet-logs.m
     CasinoModule,
     UserManagementModule,
   ],
+
+  // ✅ ADD THIS BLOCK
+  providers: [VaultService, VaultLoaderService],
 })
 export class AppModule {}
