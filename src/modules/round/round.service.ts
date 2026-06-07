@@ -117,13 +117,28 @@ async getCrashCommonData(params: CrashGameParams): Promise<any> {
 
   const result = await this.repository.getCrashCommonData(params);
 
+  const formatFC = (val: any) => {
+    if (!val) return null;
+
+    try {
+      // Convert "YYYY-MM-DD HH:mm:ss.sss" → ISO
+      return new Date(val.replace(" ", "T") + "Z").toISOString();
+    } catch {
+      return val; // fallback (don't break existing data)
+    }
+  };
+
+  const data = result.recordset.map((row: any) => ({
+    ...row,
+    FC_RequestTime: formatFC(row.FC_RequestTime),
+  }));
+
   return {
     success: true,
-    api: 'crashgamesdata-common',
-    mode: params.roundId ? 'RoundId' : 'GameIdUserId',
-    count: result.recordset.length,
-    data: result.recordset,
+    api: "crashgamesdata-common",
+    mode: params.roundId ? "RoundId" : "GameIdUserId",
+    count: data.length,
+    data,
   };
 }
-
 }
