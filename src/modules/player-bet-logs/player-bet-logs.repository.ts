@@ -3,7 +3,9 @@ import axios from 'axios';
 
 @Injectable()
 export class PlayerBetLogsRepository {
-  private logger = new Logger(PlayerBetLogsRepository.name);
+  private logger = new Logger(
+    PlayerBetLogsRepository.name,
+  );
 
   private readonly INDEX = {
     ALL: 'filebeat-*',
@@ -23,33 +25,77 @@ export class PlayerBetLogsRepository {
   }
 
   /**
-   * Generates:
-   * filebeat-live-YYYY.MM.DD*
-   * based on API input date
+   * Search both:
+   * current day index
+   * previous day index
+   *
+   * because some logs are delayed
+   * and stored in previous day index
    */
-private getCasinoIndex(date: string): string {
-  const logDate = new Date(date);
+  private getCasinoIndexes(
+    date: string,
+  ): string[] {
+    const logDate = new Date(date);
 
-  const yyyy = logDate.getUTCFullYear();
-  const mm = String(logDate.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(logDate.getUTCDate()).padStart(2, '0');
+    const current = new Date(logDate);
 
-  return `filebeat-casino-${yyyy}.${mm}.${dd}*`;
-}
+    const previous = new Date(logDate);
+
+    previous.setUTCDate(
+      previous.getUTCDate() - 1,
+    );
+
+    const format = (d: Date) => {
+      const yyyy = d.getUTCFullYear();
+
+      const mm = String(
+        d.getUTCMonth() + 1,
+      ).padStart(2, '0');
+
+      const dd = String(
+        d.getUTCDate(),
+      ).padStart(2, '0');
+
+      return `filebeat-casino-${yyyy}.${mm}.${dd}*`;
+    };
+
+    return [
+      format(previous),
+      format(current),
+    ];
+  }
+
   private async searchFilebeatLogs(params: {
     query: string;
     from: string;
     to: string;
     size?: number;
-    index?: string;
+    index?: string | string[];
   }) {
-    const index = params.index || this.INDEX.ALL;
-    const traceId = Math.random().toString(36).substring(2, 8);
+    const index = Array.isArray(
+      params.index,
+    )
+      ? params.index.join(',')
+      : params.index ||
+        this.INDEX.ALL;
+
+    const traceId = Math.random()
+      .toString(36)
+      .substring(2, 8);
+
     const start = Date.now();
 
     const body = {
       size: params.size ?? 2000,
-      sort: [{ '@timestamp': { order: 'asc' } }],
+
+      sort: [
+        {
+          '@timestamp': {
+            order: 'asc',
+          },
+        },
+      ],
+
       _source: [
         '@timestamp',
         'message',
@@ -66,16 +112,19 @@ private getCasinoIndex(date: string): string {
         'app_proc_time',
         'contextMap',
       ],
+
       query: {
         bool: {
           must: [
             {
               query_string: {
                 query: params.query,
-                default_operator: 'AND',
+                default_operator:
+                  'AND',
               },
             },
           ],
+
           filter: [
             {
               range: {
@@ -104,8 +153,11 @@ private getCasinoIndex(date: string): string {
         },
       );
 
-      const time = Date.now() - start;
-      const hits = res.data?.hits?.hits || [];
+      const time =
+        Date.now() - start;
+
+      const hits =
+        res.data?.hits?.hits || [];
 
       this.logger.log(
         `[${traceId}] ES OK | time=${time}ms | hits=${hits.length} | es=${res.data?.took}ms`,
@@ -117,7 +169,8 @@ private getCasinoIndex(date: string): string {
         ...x._source,
       }));
     } catch (error: any) {
-      const time = Date.now() - start;
+      const time =
+        Date.now() - start;
 
       this.logger.error(
         `[${traceId}] ES FAIL | time=${time}ms | ${error.message}`,
@@ -127,7 +180,10 @@ private getCasinoIndex(date: string): string {
     }
   }
 
-  private buildQueries(gameId: string, userId: string) {
+  private buildQueries(
+    gameId: string,
+    userId: string,
+  ) {
     const query1 = `(
       contextMap.userId:"${userId}" AND message:"${gameId}"
     )`;
@@ -158,76 +214,167 @@ private getCasinoIndex(date: string): string {
     return [query1, query2, query3];
   }
 
-  private async runGameQueries(params: any) {
-    const gameId = this.clean(params.gameId);
-    const userId = this.clean(params.userId);
-
-    const [q1, q2, q3] = this.buildQueries(gameId, userId);
-
-    const casinoIndex = this.getCasinoIndex(params.from);
-
-    this.logger.log(
-      `[GAMELOGS] Using index=${casinoIndex} | gameId=${gameId} | userId=${userId}`,
+  private async runGameQueries(
+    params: any,
+  ) {
+    const gameId = this.clean(
+      params.gameId,
     );
 
-    const [res1, res2, res3] = await Promise.all([
-      this.searchFilebeatLogs({
-        query: q1,
-        from: params.from,
-        to: params.to,
-        index: casinoIndex,
-      }),
-      this.searchFilebeatLogs({
-        query: q2,
-        from: params.from,
-        to: params.to,
-        index: casinoIndex,
-      }),
-      this.searchFilebeatLogs({
-        query: q3,
-        from: params.from,
-        to: params.to,
-        size: 3000,
-        index: casinoIndex,
-      }),
-    ]);
+    const userId = this.clean(
+      params.userId,
+    );
 
-    return [...res1, ...res2, ...res3];
-  }
+    const [q1, q2, q3] =
+      this.buildQueries(
+        gameId,
+        userId,
+      );
 
-  async searchGenericGameLogs(params: any) {
-    this.logger.log(`[GENERIC] ${params.gameId} | ${params.userId}`);
-    return this.runGameQueries(params);
-  }
-
-  async searchOtherGameLogs(params: any) {
-    this.logger.log(`[OTHER] ${params.gameId} | ${params.userId}`);
-    return this.runGameQueries(params);
-  }
-
-  async searchBlackjackGameLogs(params: any) {
-    this.logger.log(`[BLACKJACK] ${params.gameId} | ${params.userId}`);
-    return this.runGameQueries(params);
-  }
-
-  async searchBaccaratGameLogs(params: any) {
-    this.logger.log(`[BACCARAT] ${params.gameId} | ${params.userId}`);
-    return this.runGameQueries(params);
-  }
-
-  async searchCrashGameLogs(params: any) {
-    this.logger.log(`[CRASH] ${params.gameId} | ${params.userId}`);
-    return this.runGameQueries(params);
-  }
-
-  async searchLateBetLogs(params: any) {
-    const gameId = this.clean(params.gameId);
-    const userId = this.clean(params.userId);
-
-    const casinoIndex = this.getCasinoIndex(params.from);
+    const casinoIndexes =
+      this.getCasinoIndexes(
+        params.from,
+      );
 
     this.logger.log(
-      `[LATEBET] ${gameId} | ${userId} | idx=${casinoIndex}`,
+      `[GAMELOGS] Using indexes=${casinoIndexes.join(
+        ',',
+      )} | gameId=${gameId} | userId=${userId}`,
+    );
+
+    const [res1, res2, res3] =
+      await Promise.all([
+        this.searchFilebeatLogs({
+          query: q1,
+          from: params.from,
+          to: params.to,
+          index: casinoIndexes,
+        }),
+
+        this.searchFilebeatLogs({
+          query: q2,
+          from: params.from,
+          to: params.to,
+          index: casinoIndexes,
+        }),
+
+        this.searchFilebeatLogs({
+          query: q3,
+          from: params.from,
+          to: params.to,
+          size: 3000,
+          index: casinoIndexes,
+        }),
+      ]);
+
+    // combine all
+    const combined = [
+      ...res1,
+      ...res2,
+      ...res3,
+    ];
+
+    // remove duplicates
+    const uniqueMap = new Map();
+
+    for (const item of combined) {
+      uniqueMap.set(item._id, item);
+    }
+
+    // sort by timestamp
+    return Array.from(
+      uniqueMap.values(),
+    ).sort(
+      (a: any, b: any) =>
+        new Date(
+          a['@timestamp'],
+        ).getTime() -
+        new Date(
+          b['@timestamp'],
+        ).getTime(),
+    );
+  }
+
+  async searchGenericGameLogs(
+    params: any,
+  ) {
+    this.logger.log(
+      `[GENERIC] ${params.gameId} | ${params.userId}`,
+    );
+
+    return this.runGameQueries(
+      params,
+    );
+  }
+
+  async searchOtherGameLogs(
+    params: any,
+  ) {
+    this.logger.log(
+      `[OTHER] ${params.gameId} | ${params.userId}`,
+    );
+
+    return this.runGameQueries(
+      params,
+    );
+  }
+
+  async searchBlackjackGameLogs(
+    params: any,
+  ) {
+    this.logger.log(
+      `[BLACKJACK] ${params.gameId} | ${params.userId}`,
+    );
+
+    return this.runGameQueries(
+      params,
+    );
+  }
+
+  async searchBaccaratGameLogs(
+    params: any,
+  ) {
+    this.logger.log(
+      `[BACCARAT] ${params.gameId} | ${params.userId}`,
+    );
+
+    return this.runGameQueries(
+      params,
+    );
+  }
+
+  async searchCrashGameLogs(
+    params: any,
+  ) {
+    this.logger.log(
+      `[CRASH] ${params.gameId} | ${params.userId}`,
+    );
+
+    return this.runGameQueries(
+      params,
+    );
+  }
+
+  async searchLateBetLogs(
+    params: any,
+  ) {
+    const gameId = this.clean(
+      params.gameId,
+    );
+
+    const userId = this.clean(
+      params.userId,
+    );
+
+    const casinoIndexes =
+      this.getCasinoIndexes(
+        params.from,
+      );
+
+    this.logger.log(
+      `[LATEBET] ${gameId} | ${userId} | idx=${casinoIndexes.join(
+        ',',
+      )}`,
     );
 
     return this.searchFilebeatLogs({
@@ -235,14 +382,20 @@ private getCasinoIndex(date: string): string {
       from: params.from,
       to: params.to,
       size: 500,
-      index: casinoIndex,
+      index: casinoIndexes,
     });
   }
 
-  async searchRoundLogs(params: any) {
-    const roundId = this.clean(params.roundId);
+  async searchRoundLogs(
+    params: any,
+  ) {
+    const roundId = this.clean(
+      params.roundId,
+    );
 
-    this.logger.log(`[ROUND] ${roundId}`);
+    this.logger.log(
+      `[ROUND] ${roundId}`,
+    );
 
     return this.searchFilebeatLogs({
       query: `"${roundId}"`,
