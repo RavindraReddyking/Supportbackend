@@ -9,6 +9,7 @@ import { PlayerBetsModule } from './modules/player-bets/player-bets.module';
 import { RoundModule } from './modules/round/round.module';
 import { UserManagementModule } from './modules/user-management/user-management.module';
 import { PlayerBetLogsModule } from './modules/player-bet-logs/player-bet-logs.module';
+import { GameLaunchModule } from './modules/gamelaunch/gamelaunch.module';
 
 // ✅ ADD THESE
 import { VaultService } from './vault.service';
@@ -26,9 +27,10 @@ import { VaultLoaderService } from './vault-loader.service';
     PlayerBetLogsModule,
     CasinoModule,
     UserManagementModule,
+    GameLaunchModule,
   ],
 
   // ✅ ADD THIS BLOCK
-  providers: [VaultService, VaultLoaderService],
+  providers: [VaultService],
 })
 export class AppModule {}

@@ -7,7 +7,6 @@ export class PlayerBetLogsRepository {
 
   private readonly INDEX = {
     ALL: 'filebeat-*',
-    CASINO: 'filebeat-*',
   };
 
   private headers() {
@@ -23,6 +22,20 @@ export class PlayerBetLogsRepository {
     return value?.trim();
   }
 
+  /**
+   * Generates:
+   * filebeat-live-YYYY.MM.DD*
+   * based on API input date
+   */
+private getCasinoIndex(date: string): string {
+  const logDate = new Date(date);
+
+  const yyyy = logDate.getUTCFullYear();
+  const mm = String(logDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(logDate.getUTCDate()).padStart(2, '0');
+
+  return `filebeat-casino-${yyyy}.${mm}.${dd}*`;
+}
   private async searchFilebeatLogs(params: {
     query: string;
     from: string;
@@ -37,7 +50,7 @@ export class PlayerBetLogsRepository {
     const body = {
       size: params.size ?? 2000,
       sort: [{ '@timestamp': { order: 'asc' } }],
-           _source: [
+      _source: [
         '@timestamp',
         'message',
         'app',
@@ -85,16 +98,24 @@ export class PlayerBetLogsRepository {
       const res = await axios.post(
         `${process.env.ES_HOST}/${index}/_search`,
         body,
-        { headers: this.headers(), timeout: 120000 },
+        {
+          headers: this.headers(),
+          timeout: 120000,
+        },
       );
+
       const time = Date.now() - start;
-      const hits = res.data?.hits?.hits?.length || 0;
+      const hits = res.data?.hits?.hits || [];
 
       this.logger.log(
-        `[${traceId}] ES OK | time=${time}ms | hits=${hits} | es=${res.data?.took}ms`,
+        `[${traceId}] ES OK | time=${time}ms | hits=${hits.length} | es=${res.data?.took}ms`,
       );
 
-      return res.data?.hits?.hits?.map((x: any) => x._source) || [];
+      return hits.map((x: any) => ({
+        _id: x._id,
+        _index: x._index,
+        ...x._source,
+      }));
     } catch (error: any) {
       const time = Date.now() - start;
 
@@ -106,66 +127,70 @@ export class PlayerBetLogsRepository {
     }
   }
 
-  // ✅ COMMON QUERY BUILDER
   private buildQueries(gameId: string, userId: string) {
-    
-const query1 = `(
-  contextMap.userId:"${userId}" AND message:"${gameId}"
-)`
+    const query1 = `(
+      contextMap.userId:"${userId}" AND message:"${gameId}"
+    )`;
 
     const query2 = `"${userId}" AND "Start WS Listener"`;
+
     const query3 = `(
-  (
-    message:"${gameId}" AND (
-      message:"betsclosed"
-      OR message:"betsopen"
-      OR message:"startdealing"
-      OR message:"gr"
-      OR message:"crashGameResult"
-      OR message:"card"
-      OR message:"decisioninc"
-      OR message:"decision"
+      (
+        message:"${gameId}" AND (
+          message:"betsclosed"
+          OR message:"betsopen"
+          OR message:"startdealing"
+          OR message:"gr"
+          OR message:"crashGameResult"
+          OR message:"card"
+          OR message:"decisioninc"
+          OR message:"decision"
+        )
+      )
+      OR
+      (
+        message:"${gameId}" AND message:"${userId}"
+      )
     )
-  )
-  OR
-  (
-    message:"${gameId}" AND message:"${userId}"
-  )
-)
-AND NOT message:"JavaFX Application Thread"
-AND NOT message:"Hash calculation"`;
+    AND NOT message:"JavaFX Application Thread"
+    AND NOT message:"Hash calculation"`;
 
     return [query1, query2, query3];
   }
 
-  // ✅ GENERIC / OTHER / BLACKJACK / BACCARAT / CRASH (same logic)
   private async runGameQueries(params: any) {
     const gameId = this.clean(params.gameId);
     const userId = this.clean(params.userId);
 
     const [q1, q2, q3] = this.buildQueries(gameId, userId);
 
-    const res1 = await this.searchFilebeatLogs({
-      query: q1,
-      from: params.from,
-      to: params.to,
-      index: this.INDEX.CASINO,
-    });
+    const casinoIndex = this.getCasinoIndex(params.from);
 
-    const res2 = await this.searchFilebeatLogs({
-      query: q2,
-      from: params.from,
-      to: params.to,
-      index: this.INDEX.CASINO,
-    });
+    this.logger.log(
+      `[GAMELOGS] Using index=${casinoIndex} | gameId=${gameId} | userId=${userId}`,
+    );
 
-    const res3 = await this.searchFilebeatLogs({
-      query: q3,
-      from: params.from,
-      to: params.to,
-      size: 3000,
-      index: this.INDEX.CASINO,
-    });
+    const [res1, res2, res3] = await Promise.all([
+      this.searchFilebeatLogs({
+        query: q1,
+        from: params.from,
+        to: params.to,
+        index: casinoIndex,
+      }),
+      this.searchFilebeatLogs({
+        query: q2,
+        from: params.from,
+        to: params.to,
+        index: casinoIndex,
+      }),
+      this.searchFilebeatLogs({
+        query: q3,
+        from: params.from,
+        to: params.to,
+        size: 3000,
+        index: casinoIndex,
+      }),
+    ]);
 
     return [...res1, ...res2, ...res3];
   }
@@ -195,23 +220,25 @@ AND NOT message:"Hash calculation"`;
     return this.runGameQueries(params);
   }
 
-  // ✅ LATE BET (unchanged)
   async searchLateBetLogs(params: any) {
     const gameId = this.clean(params.gameId);
     const userId = this.clean(params.userId);
 
-    this.logger.log(`[LATEBET] ${gameId} | ${userId}`);
+    const casinoIndex = this.getCasinoIndex(params.from);
+
+    this.logger.log(
+      `[LATEBET] ${gameId} | ${userId} | idx=${casinoIndex}`,
+    );
 
     return this.searchFilebeatLogs({
       query: `"ERROR : 1007 - LATE BET" AND "${gameId}" AND "${userId}"`,
       from: params.from,
       to: params.to,
       size: 500,
-      index: this.INDEX.CASINO,
+      index: casinoIndex,
     });
   }
 
-  // ✅ ROUND (unchanged)
   async searchRoundLogs(params: any) {
     const roundId = this.clean(params.roundId);
 
