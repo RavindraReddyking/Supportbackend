@@ -5,8 +5,38 @@ import {
 
 import axios from 'axios';
 import * as crypto from 'crypto';
+import dayjs from 'dayjs';
+import * as https from 'https';
 
 import { GameLaunchRepository } from './gamelaunch.repository';
+
+type ParsedGameLaunchUrl = {
+  type: string;
+
+  stylename?: string;
+
+  secureLogin?: string;
+
+  userId?: string;
+
+  ppkv?: string;
+
+  country?: string;
+
+  token?: string;
+
+  tc?: string;
+
+  ppToken?: string;
+
+  ppCasinoId?: string;
+
+  gameid?: string;
+
+  environmentID?: string;
+
+  symbol: string;
+};
 
 @Injectable()
 export class GameLaunchService {
@@ -16,6 +46,14 @@ export class GameLaunchService {
 
   private readonly rgsSecret =
     process.env.RGS_SECRET || '';
+
+  private readonly internalApiUrl =
+    process.env.INTERNAL_API_URL ||
+    'http://localhost:3000';
+
+  // =====================================================
+  // PLATFORM ENABLED GAMES
+  // =====================================================
 
   private extractCasinoId(
     casinoId: string,
@@ -39,7 +77,6 @@ export class GameLaunchService {
   async getCasinoGames(
     casinoId: string,
   ) {
-    // DB QUERY
     const casinoData: any =
       await this.repository.getCasinoDetails(
         casinoId,
@@ -54,7 +91,6 @@ export class GameLaunchService {
       );
     }
 
-    // CLEAN VALUES
     const login = String(
       data.login,
     ).trim();
@@ -65,32 +101,25 @@ export class GameLaunchService {
 
     const UCID = data.UCID;
 
-    // CUSTOM CASINO ID
     const finalCasinoId =
       this.extractCasinoId(casinoId);
 
-    // API PATH
     const path =
       `/RGSGateway/GameAPI/getCasinoGames/${finalCasinoId}/`;
 
-    // FULL URL
-    const url =
+    let url =
       `https://api-${env}.ppgames.net${path}`;
 
-    // TIMESTAMP
     const timestamp = Math.round(
       new Date().getTime() / 1000,
     ).toString();
 
-    // PATH FOR HMAC
     const pathForHmac =
       path.toUpperCase();
 
-    // STRING FOR HMAC
     const strForHmac =
       `GET-${timestamp}-${pathForHmac}`;
 
-    // HMAC MD5
     const hmacMd5 = crypto
       .createHmac(
         'md5',
@@ -99,13 +128,11 @@ export class GameLaunchService {
       .update(strForHmac)
       .digest('hex');
 
-    // BASE64
     const rgsHash = Buffer.from(
       hmacMd5,
       'utf8',
     ).toString('base64');
 
-    // HEADERS
     const headers = {
       'Content-Type':
         'application/x-www-form-urlencoded',
@@ -117,12 +144,28 @@ export class GameLaunchService {
     };
 
     try {
-      const response = await axios.get(
-        url,
-        {
-          headers,
-        },
-      );
+      let response: any;
+
+      try {
+        response =
+          await axios.get(
+            url,
+            {
+              headers,
+            },
+          );
+      } catch {
+        url =
+          `https://api-${env}.pragmaticplay.net${path}`;
+
+        response =
+          await axios.get(
+            url,
+            {
+              headers,
+            },
+          );
+      }
 
       return {
         success: true,
@@ -137,8 +180,667 @@ export class GameLaunchService {
         success: false,
         message: error.message,
         response:
-          error.response?.data || null,
+          error.response?.data ||
+          null,
       };
     }
+  }
+
+  // =====================================================
+  // LC ENABLED TABLES
+  // =====================================================
+
+  async getLcEnabledTables(
+    casinoId: string,
+    cookies: string,
+  ) {
+    try {
+      const response =
+        await axios.get(
+          `${this.internalApiUrl}/api/lc-enabled-tables`,
+          {
+            params: {
+              casinoid:
+                casinoId,
+            },
+
+            headers: cookies
+              ? {
+                  cookie:
+                    cookies,
+                }
+              : {},
+
+            httpsAgent:
+              new https.Agent({
+                rejectUnauthorized:
+                  false,
+              }),
+
+            timeout: 30000,
+          },
+        );
+
+      return (
+        response?.data?.data ||
+        []
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  // =====================================================
+  // INVESTIGATION
+  // =====================================================
+
+  async investigate(params: {
+    url: string;
+    startDate?: string;
+    endDate?: string;
+    cookies?: string;
+  }) {
+    
+
+const cleanedUrl =
+  params.url.replace(
+    /&amp;/g,
+    '&',
+  );
+    const parsed =
+      this.parseUrl(cleanedUrl);
+
+    const from =
+      params.startDate ||
+      dayjs()
+        .subtract(24, 'hour')
+        .toISOString();
+
+    const to =
+      params.endDate ||
+      dayjs().toISOString();
+
+    const tableConfigResponse: any =
+      await this.repository.getTableConfig(
+        parsed.symbol,
+      );
+
+    const tableConfig =
+      tableConfigResponse
+        ?.recordset?.[0] || null;
+
+    const styleName =
+      parsed.stylename ||
+      parsed.secureLogin;
+
+    const casinoResponse: any =
+      await this.repository.findCasinoUsers(
+        styleName || '',
+      );
+
+    let casinos =
+      casinoResponse
+        ?.recordset || [];
+
+    const token =
+      parsed.token ||
+      parsed.tc ||
+      parsed.ppToken;
+
+    let logs: any[] = [];
+
+    const rawLogs =
+      await this.repository.searchGameLaunchLogs(
+        {
+          token:
+            token || '',
+          gameId:
+            parsed.symbol,
+          from,
+          to,
+        },
+      );
+
+    
+logs =
+  this.filterGameLaunchLogs(
+    rawLogs,
+    token || '',
+  );
+
+   if (casinos.length > 1) {
+  let matchedCasinoId =
+    logs.find(
+      (x: any) =>
+        x?.contextMap
+          ?.casinoId,
+    )?.contextMap
+      ?.casinoId;
+
+  // FALLBACK USING app.casinoID + stage
+  if (!matchedCasinoId) {
+    const fallbackLog =
+      logs.find(
+        (x: any) =>
+          x?.app?.casinoID &&
+          x?.stage,
+      );
+
+    if (fallbackLog) {
+      const shortCasinoId =
+        `${fallbackLog.app.casinoID}`;
+
+      const envFromStage =
+        fallbackLog.stage
+          ?.replace(
+            /^prod[-_]?/i,
+            '',
+          )
+          ?.toLowerCase();
+
+      matchedCasinoId =
+        casinos.find(
+          (casino: any) => {
+            const casinoId =
+              `${casino.casino_id}`;
+
+            const numericCasinoId =
+              casinoId.replace(
+                /\D/g,
+                '',
+              );
+
+            const casinoEnv =
+              casinoId
+                .replace(
+                  /^ppc/i,
+                  '',
+                )
+                .replace(
+                  /\d+$/,
+                  '',
+                )
+                .toLowerCase();
+
+            let envMatched =
+              false;
+
+            if (
+              /^[a-z]+0$/i.test(
+                envFromStage,
+              )
+            ) {
+              const baseEnv =
+                envFromStage.slice(
+                  0,
+                  -1,
+                );
+
+              envMatched =
+                casinoEnv ===
+                  baseEnv ||
+                casinoEnv ===
+                  envFromStage;
+            } else {
+              envMatched =
+                casinoEnv ===
+                envFromStage;
+            }
+
+            const casinoMatched =
+              Number(
+                numericCasinoId,
+              ) ===
+                Number(
+                  shortCasinoId,
+                ) &&
+              envMatched;
+
+            console.log(
+              'CASINO MATCH CHECK',
+            );
+
+            console.log({
+              appCasinoId:
+                shortCasinoId,
+
+              originalCasinoId:
+                casinoId,
+
+              convertedCasinoId:
+                numericCasinoId,
+
+              casinoEnv,
+
+              envFromStage,
+
+              envMatched,
+
+              casinoMatched,
+            });
+
+            return casinoMatched;
+          },
+        )?.casino_id;
+    }
+  }
+
+  if (matchedCasinoId) {
+    casinos =
+      casinos.filter(
+        (x: any) =>
+          `${x.casino_id}` ===
+          `${matchedCasinoId}`,
+      );
+  }
+}
+
+const casinoData = [];
+
+for (const casino of casinos) {
+  const result =
+    await this.buildCasinoResult(
+      casino,
+      parsed.symbol,
+      tableConfig,
+      params.cookies ||
+        '',
+    );
+
+  casinoData.push(result);
+}
+
+return {
+  success: true,
+
+  duration: {
+    from,
+    to,
+  },
+
+  parsed,
+
+  game: {
+    gameId:
+      tableConfig
+        ?.operator_game_id ||
+      parsed.symbol,
+
+    tableName:
+      tableConfig
+        ?.table_name ||
+      '',
+
+    tableId:
+      tableConfig
+        ?.table_id ||
+      '',
+  },
+
+  casinos:
+    casinoData,
+
+  logs:
+    this.mapLogs(logs),
+};
+}
+
+  // =====================================================
+  // BUILD CASINO RESULT
+  // =====================================================
+
+  private async buildCasinoResult(
+    casino: any,
+    symbol: string,
+    tableConfig: any,
+    cookies: string,
+  ) {
+    const casinoId =
+      casino.casino_id;
+
+    const [
+      lcTables,
+      platformGames,
+    ] = await Promise.all([
+      this.getLcEnabledTables(
+        casinoId,
+        cookies,
+      ),
+
+      this.getCasinoGames(
+        casinoId,
+      ),
+    ]);
+
+    const lcMatch =
+      lcTables?.find(
+        (x: any) =>
+          `${x.operator_game_id}` ===
+            `${symbol}` ||
+          `${x.gameID}` ===
+            `${symbol}` ||
+          `${x.gameid}` ===
+            `${symbol}` ||
+          `${x.symbol}` ===
+            `${symbol}` ||
+          `${x.operatorGameId}` ===
+            `${symbol}`,
+      );
+
+    const games =
+      platformGames?.data
+        ?.games || [];
+
+    const platformMatch =
+      games.find(
+        (x: any) =>
+          `${x.gameID}` ===
+          `${symbol}`,
+      );
+
+    return {
+      casinoId,
+
+      casinoName:
+        lcMatch?.casino_desc ||
+        casino.email_address,
+
+      envName:
+        platformGames?.env ||
+        lcMatch?.env_name ||
+        '',
+
+      casinoactiveFlag:
+        casino.active_flag,
+
+      lcEnabled:
+        Boolean(
+          lcMatch,
+        ),
+
+      platformEnabled:
+        Boolean(
+          platformMatch,
+        ),
+
+      tableOpen:
+        lcMatch?.table_open ??
+        null,
+    };
+  }
+
+  // =====================================================
+  // FILTER GAME LAUNCH LOGS
+  // =====================================================
+
+private filterGameLaunchLogs(
+  logs: any[],
+  token: string,
+) {
+  return this.dedupeByTimestampAndMessage(
+    logs.filter((log: any) => {
+      const combined =
+        JSON.stringify(log);
+
+      return combined.includes(
+        token,
+      );
+    }),
+  );
+}
+  // =====================================================
+  // URL PARSER
+  // =====================================================
+
+  private parseUrl(
+    url: string,
+  ): ParsedGameLaunchUrl {
+    if (
+      url.includes(
+        'playGame.do',
+      )
+    ) {
+      return this.parsePlayGameUrl(
+        url,
+      );
+    }
+
+    if (
+      url.includes(
+        'openGame.do',
+      )
+    ) {
+      return this.parseOpenGameUrl(
+        url,
+      );
+    }
+
+    return this.parseGameLaunch(
+      url,
+    );
+  }
+
+  private parsePlayGameUrl(
+    url: string,
+  ): ParsedGameLaunchUrl {
+    const parsed =
+      new URL(url);
+
+    const key =
+      decodeURIComponent(
+        parsed.searchParams.get(
+          'key',
+        ) || '',
+      );
+
+    const keyMap: any = {};
+
+    key
+      .split('`|`')
+      .forEach((x) => {
+        const [
+          k,
+          v,
+        ] = x.split('=');
+
+        keyMap[k] = v;
+      });
+
+    return {
+      type: 'PLAY_GAME',
+
+      stylename:
+        parsed.searchParams.get(
+          'stylename',
+        ) || '',
+
+      userId:
+        parsed.searchParams.get(
+          'userId',
+        ) || '',
+
+      ppkv:
+        parsed.searchParams.get(
+          'ppkv',
+        ) || '',
+
+      country:
+        parsed.searchParams.get(
+          'country',
+        ) || '',
+
+      token:
+        keyMap.token || '',
+
+      symbol:
+        keyMap.symbol || '',
+    };
+  }
+
+  private parseOpenGameUrl(
+    url: string,
+  ): ParsedGameLaunchUrl {
+    const parsed =
+      new URL(url);
+
+    return {
+      type: 'OPEN_GAME',
+
+      stylename:
+        parsed.searchParams.get(
+          'stylename',
+        ) || '',
+
+      symbol:
+        parsed.searchParams.get(
+          'symbol',
+        ) || '',
+
+      tc:
+        parsed.searchParams.get(
+          'tc',
+        ) || '',
+    };
+  }
+
+  private parseGameLaunch(
+    url: string,
+  ): ParsedGameLaunchUrl {
+    const parsed =
+      new URL(url);
+
+    return {
+      type:
+        'GAME_LAUNCH',
+
+      secureLogin:
+        parsed.searchParams.get(
+          'secureLogin',
+        ) || '',
+
+      stylename:
+        parsed.searchParams.get(
+          'stylename',
+        ) || '',
+
+      gameid:
+        parsed.searchParams.get(
+          'gameid',
+        ) || '',
+
+      environmentID:
+        parsed.searchParams.get(
+          'environmentID',
+        ) || '',
+
+      ppToken:
+        parsed.searchParams.get(
+          'ppToken',
+        ) || '',
+
+      ppCasinoId:
+        parsed.searchParams.get(
+          'ppCasinoId',
+        ) || '',
+
+      symbol:
+        parsed.searchParams.get(
+          'gameid',
+        ) || '',
+    };
+  }
+
+  // =====================================================
+  // HELPERS
+  // =====================================================
+
+  private dedupeByTimestampAndMessage<
+    T extends {
+      timestamp?: string;
+      message?: string;
+    },
+  >(items: T[]): T[] {
+    const seen =
+      new Set<string>();
+
+    const result: T[] = [];
+
+    for (const item of items) {
+      const key =
+        `${item?.timestamp || ''}__${
+          item?.message || ''
+        }`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+
+      result.push(item);
+    }
+
+    return result;
+  }
+
+  // =====================================================
+  // LOG MAPPER
+  // =====================================================
+
+  private mapLogs(logs: any[]) {
+    return logs.map(
+      (log: any) => ({
+        _id:
+          log?._id || '',
+
+        _index:
+          log?._index || '',
+
+        timestamp:
+          log?.[
+            '@timestamp'
+          ] || '',
+
+        app:
+          log?.app || '',
+
+        service:
+          log?.service ||
+          '',
+
+        serviceName:
+          log?.serviceName ||
+          '',
+
+        serviceMethod:
+          log?.serviceMethod ||
+          '',
+
+        stage:
+          log?.stage || '',
+
+        error:
+          log?.error || '',
+
+        responseLog:
+          log?.responseLog ||
+          '',
+
+        requestLog:
+          log?.requestLog ||
+          '',
+
+        host:
+          log?.host || '',
+
+        message:
+          log?.message ||
+          '',
+
+        contextMap:
+          log?.contextMap ||
+          {},
+      }),
+    );
   }
 }
