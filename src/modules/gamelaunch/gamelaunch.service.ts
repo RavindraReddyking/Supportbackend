@@ -52,7 +52,7 @@ export class GameLaunchService {
     'http://localhost:3000';
 
   // =====================================================
-  // PLATFORM ENABLED GAMES
+  // HELPERS
   // =====================================================
 
   private extractCasinoId(
@@ -73,6 +73,30 @@ export class GameLaunchService {
 
     return numericPart.substring(startIndex);
   }
+
+  private extractBaseTable(
+    symbol: string,
+  ): string | null {
+    const match =
+      symbol.match(/^\d+/);
+
+    if (!match) {
+      return null;
+    }
+
+    const baseTable =
+      match[0];
+
+    if (baseTable !== symbol) {
+      return baseTable;
+    }
+
+    return null;
+  }
+
+  // =====================================================
+  // PLATFORM ENABLED GAMES
+  // =====================================================
 
   async getCasinoGames(
     casinoId: string,
@@ -240,13 +264,12 @@ export class GameLaunchService {
     endDate?: string;
     cookies?: string;
   }) {
-    
+    const cleanedUrl =
+      params.url.replace(
+        /&amp;amp;amp;/g,
+        '&amp;amp;',
+      );
 
-const cleanedUrl =
-  params.url.replace(
-    /&amp;/g,
-    '&',
-  );
     const parsed =
       this.parseUrl(cleanedUrl);
 
@@ -287,8 +310,6 @@ const cleanedUrl =
       parsed.tc ||
       parsed.ppToken;
 
-    let logs: any[] = [];
-
     const rawLogs =
       await this.repository.searchGameLaunchLogs(
         {
@@ -301,189 +322,245 @@ const cleanedUrl =
         },
       );
 
-    
-logs =
-  this.filterGameLaunchLogs(
-    rawLogs,
-    token || '',
-  );
-
-   if (casinos.length > 1) {
-  let matchedCasinoId =
-    logs.find(
-      (x: any) =>
-        x?.contextMap
-          ?.casinoId,
-    )?.contextMap
-      ?.casinoId;
-
-  // FALLBACK USING app.casinoID + stage
-  if (!matchedCasinoId) {
-    const fallbackLog =
-      logs.find(
-        (x: any) =>
-          x?.app?.casinoID &&
-          x?.stage,
+    const logs =
+      this.filterGameLaunchLogs(
+        rawLogs,
+        token || '',
       );
 
-    if (fallbackLog) {
-      const shortCasinoId =
-        `${fallbackLog.app.casinoID}`;
+console.log(
+  'TOTAL MATCHED LOGS:',
+  logs.length,
+);
 
-      const envFromStage =
-        fallbackLog.stage
-          ?.replace(
-            /^prod[-_]?/i,
-            '',
-          )
-          ?.toLowerCase();
+    // =====================================================
+    // CASINO MATCHING
+    // =====================================================
 
-      matchedCasinoId =
-        casinos.find(
-          (casino: any) => {
-            const casinoId =
-              `${casino.casino_id}`;
+    if (casinos.length > 1) {
+      
+console.log(
+  'MULTIPLE CASINOS FOUND',
+);
 
-            const numericCasinoId =
-              casinoId.replace(
-                /\D/g,
+console.log(
+  'TRYING CONTEXTMAP CASINO MATCH',
+);
+
+      let matchedCasinoId =
+        logs.find(
+          (x: any) =>
+            x?.contextMap
+              ?.casinoId,
+        )?.contextMap
+          ?.casinoId;
+
+console.log(
+  'CONTEXTMAP MATCHED CASINO:',
+  matchedCasinoId,
+);
+
+      // FALLBACK USING app.casinoID + stage
+      if (!matchedCasinoId) {
+        
+console.log(
+  'CONTEXTMAP FAILED -> USING FALLBACK FLOW',
+);
+
+        const fallbackLog =
+        
+          logs.find(
+            (x: any) =>
+              x?.app?.casinoID &&
+              x?.stage,
+          );
+
+console.log(
+  'FALLBACK LOG FOUND:',
+  Boolean(fallbackLog),
+);
+
+        if (fallbackLog) {
+          const shortCasinoId =
+            `${fallbackLog.app.casinoID}`;
+
+          const envFromStage =
+            fallbackLog.stage
+              ?.replace(
+                /^prod[-_]?/i,
                 '',
-              );
-
-            const casinoEnv =
-              casinoId
-                .replace(
-                  /^ppc/i,
-                  '',
-                )
-                .replace(
-                  /\d+$/,
-                  '',
-                )
-                .toLowerCase();
-
-            let envMatched =
-              false;
-
-            if (
-              /^[a-z]+0$/i.test(
-                envFromStage,
               )
-            ) {
-              const baseEnv =
-                envFromStage.slice(
-                  0,
-                  -1,
-                );
+              ?.toLowerCase();
 
-              envMatched =
-                casinoEnv ===
-                  baseEnv ||
-                casinoEnv ===
-                  envFromStage;
-            } else {
-              envMatched =
-                casinoEnv ===
-                envFromStage;
-            }
+console.log({
+  shortCasinoId,
+  envFromStage,
+});
 
-            const casinoMatched =
-              Number(
-                numericCasinoId,
-              ) ===
-                Number(
-                  shortCasinoId,
-                ) &&
-              envMatched;
+          matchedCasinoId =
+            casinos.find(
+              (casino: any) => {
+                const casinoId =
+                  `${casino.casino_id}`;
 
-            console.log(
-              'CASINO MATCH CHECK',
-            );
+                const numericCasinoId =
+                  casinoId.replace(
+                    /\D/g,
+                    '',
+                  );
 
-            console.log({
-              appCasinoId:
-                shortCasinoId,
+                const casinoEnv =
+                  casinoId
+                    .replace(
+                      /^ppc/i,
+                      '',
+                    )
+                    .replace(
+                      /\d+$/,
+                      '',
+                    )
+                    .toLowerCase();
 
-              originalCasinoId:
-                casinoId,
+                let envMatched =
+                  false;
 
-              convertedCasinoId:
-                numericCasinoId,
+                if (
+                  /^[a-z]+0$/i.test(
+                    envFromStage,
+                  )
+                ) {
+                  const baseEnv =
+                    envFromStage.slice(
+                      0,
+                      -1,
+                    );
 
-              casinoEnv,
+                  envMatched =
+                    casinoEnv ===
+                      baseEnv ||
+                    casinoEnv ===
+                      envFromStage;
+                } else {
+                  envMatched =
+                    casinoEnv ===
+                    envFromStage;
+                }
 
-              envFromStage,
+                const casinoMatched =
+                  Number(
+                    numericCasinoId,
+                  ) ===
+                    Number(
+                      shortCasinoId,
+                    ) &&
+                  envMatched;
 
-              envMatched,
+                return casinoMatched;
+              },
+            )?.casino_id;
+        }
+      }
 
-              casinoMatched,
-            });
 
-            return casinoMatched;
-          },
-        )?.casino_id;
+      if (matchedCasinoId) {
+        console.log(
+  'FINAL MATCHED CASINO:',
+  matchedCasinoId,
+);
+        casinos =
+          casinos.filter(
+            (x: any) =>
+              `${x.casino_id}` ===
+              `${matchedCasinoId}`,
+          );
+      }
     }
+
+    const casinoData: any[] = [];
+
+    for (const casino of casinos) {
+      const result =
+        await this.buildCasinoResult(
+          casino,
+          parsed.symbol,
+          tableConfig,
+          params.cookies ||
+            '',
+        );
+
+      casinoData.push(result);
+    }
+
+    return {
+      success: true,
+
+      duration: {
+        from,
+        to,
+      },
+
+      parsed,
+
+      gameDetails: {
+        gameId:
+          tableConfig
+            ?.operator_game_id ||
+          parsed.symbol,
+
+        tableName:
+          tableConfig
+            ?.table_name ||
+          '',
+
+        tableId:
+          tableConfig
+            ?.table_id ||
+          '',
+
+        lcEnabled:
+          Boolean(
+            casinoData?.[0]
+              ?.lcEnabled,
+          ),
+
+        platformEnabled:
+          Boolean(
+            casinoData?.[0]
+              ?.platformEnabled,
+          ),
+
+        tableOpen:
+          casinoData?.[0]
+            ?.tableOpen ??
+          null,
+      },
+
+      baseTableData:
+        casinoData?.[0]
+          ?.baseTableData ||
+        null,
+
+      chromaTables:
+        casinoData?.[0]
+          ?.chromaTables ||
+        [],
+
+      casinos:
+        casinoData.map(
+          ({
+            lcEnabled,
+            platformEnabled,
+            tableOpen,
+            baseTableData,
+            chromaTables,
+            ...casino
+          }: any) => casino,
+        ),
+
+      logs:
+        this.mapLogs(logs),
+    };
   }
-
-  if (matchedCasinoId) {
-    casinos =
-      casinos.filter(
-        (x: any) =>
-          `${x.casino_id}` ===
-          `${matchedCasinoId}`,
-      );
-  }
-}
-
-const casinoData = [];
-
-for (const casino of casinos) {
-  const result =
-    await this.buildCasinoResult(
-      casino,
-      parsed.symbol,
-      tableConfig,
-      params.cookies ||
-        '',
-    );
-
-  casinoData.push(result);
-}
-
-return {
-  success: true,
-
-  duration: {
-    from,
-    to,
-  },
-
-  parsed,
-
-  game: {
-    gameId:
-      tableConfig
-        ?.operator_game_id ||
-      parsed.symbol,
-
-    tableName:
-      tableConfig
-        ?.table_name ||
-      '',
-
-    tableId:
-      tableConfig
-        ?.table_id ||
-      '',
-  },
-
-  casinos:
-    casinoData,
-
-  logs:
-    this.mapLogs(logs),
-};
-}
 
   // =====================================================
   // BUILD CASINO RESULT
@@ -538,6 +615,62 @@ return {
           `${symbol}`,
       );
 
+    const baseFamily =
+      symbol.match(/^\d+/)?.[0] ||
+      symbol;
+
+    const lcGameIds =
+      lcTables.map(
+        (x: any) =>
+          `${x.operator_game_id}`,
+      );
+
+    const baseTableLcEnabled =
+      lcGameIds.includes(
+        baseFamily,
+      );
+
+    const baseTablePlatformEnabled =
+      games.some(
+        (x: any) =>
+          `${x.gameID}` ===
+          baseFamily,
+      );
+
+    const chromaPlatformGames =
+      games.filter(
+        (x: any) => {
+          const gameId =
+            `${x.gameID}`;
+
+          return (
+            gameId.startsWith(
+              baseFamily,
+            ) &&
+            gameId !==
+              baseFamily
+          );
+        },
+      );
+
+    const uniqueChromaTables =
+      [
+        ...new Set(
+          chromaPlatformGames.map(
+            (x: any) =>
+              `${x.gameID}`,
+          ),
+        ),
+      ];
+
+    const lcActiveTable =
+      lcGameIds.find(
+        (x: string) =>
+          x.startsWith(
+            baseFamily,
+          ),
+      ) || null;
+
     return {
       casinoId,
 
@@ -552,6 +685,42 @@ return {
 
       casinoactiveFlag:
         casino.active_flag,
+
+      baseTableData: {
+        baseTable:
+          baseFamily,
+
+        lcEnabled:
+          baseTableLcEnabled,
+
+        platformEnabled:
+          baseTablePlatformEnabled,
+
+        lcActiveTable,
+      },
+
+      chromaTables:
+        uniqueChromaTables
+          .map((tableId) => ({
+            symbol: tableId,
+
+            platformEnabled:
+              chromaPlatformGames.some(
+                (x: any) =>
+                  `${x.gameID}` ===
+                  tableId,
+              ),
+
+            lcEnabled:
+              lcGameIds.includes(
+                tableId,
+              ),
+          }))
+          .filter(
+            (x) =>
+              x.platformEnabled ||
+              x.lcEnabled,
+          ),
 
       lcEnabled:
         Boolean(
@@ -573,21 +742,22 @@ return {
   // FILTER GAME LAUNCH LOGS
   // =====================================================
 
-private filterGameLaunchLogs(
-  logs: any[],
-  token: string,
-) {
-  return this.dedupeByTimestampAndMessage(
-    logs.filter((log: any) => {
-      const combined =
-        JSON.stringify(log);
+  private filterGameLaunchLogs(
+    logs: any[],
+    token: string,
+  ) {
+    return this.dedupeByTimestampAndMessage(
+      logs.filter((log: any) => {
+        const combined =
+          JSON.stringify(log);
 
-      return combined.includes(
-        token,
-      );
-    }),
-  );
-}
+        return combined.includes(
+          token,
+        );
+      }),
+    );
+  }
+
   // =====================================================
   // URL PARSER
   // =====================================================
@@ -751,7 +921,7 @@ private filterGameLaunchLogs(
   }
 
   // =====================================================
-  // HELPERS
+  // DEDUPE
   // =====================================================
 
   private dedupeByTimestampAndMessage<
