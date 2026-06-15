@@ -19,11 +19,23 @@ export class AuditLogService {
   private readonly cookieName: string;
 
   constructor(private readonly config: ConfigService) {
-    const runtimeDir = path.resolve(process.cwd(), 'runtime');
-    fs.mkdirSync(runtimeDir, { recursive: true });
+    // ✅ Read log directory from .env
+    const logDir = this.config.get<string>(
+      'AUDIT_LOG_PATH',
+      path.resolve(process.cwd(), 'runtime'),
+    );
 
-    this.filePath = path.join(runtimeDir, 'audit-log.jsonl');
-    this.cookieName = this.config.get<string>('COOKIE_NAME', 'JSESSIONID');
+    // ✅ Create directory if not exists
+    fs.mkdirSync(logDir, { recursive: true });
+
+    // ✅ Final log file path
+    this.filePath = path.join(logDir, 'audit-log.jsonl');
+
+    // ✅ Cookie config
+    this.cookieName = this.config.get<string>(
+      'COOKIE_NAME',
+      'JSESSIONID',
+    );
   }
 
   private decodeUserFromRequest(
@@ -56,28 +68,38 @@ export class AuditLogService {
     );
   }
 
-  // ⭐ Rotate at 5MB, keep last 100 files (≈90 days)
+  // ⭐ Rotate at 5MB, keep last 100 files (~90 days)
   private rotateIfNeeded() {
-    const maxSize = 5 * 1024 * 1024; // 5 MB
+    const maxSize = 10 * 1024 * 1024;
 
     if (!fs.existsSync(this.filePath)) return;
 
     const stats = fs.statSync(this.filePath);
+
     if (stats.size < maxSize) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
     const rotated = `${this.filePath}.${timestamp}`;
 
     fs.renameSync(this.filePath, rotated);
 
     const dir = path.dirname(this.filePath);
+
     const rotatedFiles = fs
       .readdirSync(dir)
-      .filter((f) => f.startsWith('audit-log.jsonl.') && !f.endsWith('.jsonl'));
+      .filter(
+        (f) =>
+          f.startsWith('audit-log.jsonl.') &&
+          !f.endsWith('.jsonl'),
+      );
 
-    // ⭐ Keep last 100 rotated logs (≈500MB → 90 days)
+    // ✅ Keep only latest 100 rotated files
     if (rotatedFiles.length > 100) {
-      const toDelete = rotatedFiles.sort().slice(0, rotatedFiles.length - 100);
+      const toDelete = rotatedFiles
+        .sort()
+        .slice(0, rotatedFiles.length - 100);
+
       for (const file of toDelete) {
         fs.unlinkSync(path.join(dir, file));
       }
@@ -96,13 +118,18 @@ export class AuditLogService {
     const filtered = lines.filter((line) => {
       try {
         const entry = JSON.parse(line);
+
         return entry.actorEmail !== 'anonymous';
       } catch {
         return false;
       }
     });
 
-    fs.writeFileSync(this.filePath, filtered.join('\n') + '\n', 'utf8');
+    fs.writeFileSync(
+      this.filePath,
+      filtered.join('\n') + '\n',
+      'utf8',
+    );
 
     return lines.length - filtered.length;
   }
@@ -122,13 +149,21 @@ export class AuditLogService {
       metadata: action.metadata,
     };
 
-    fs.appendFileSync(this.filePath, `${JSON.stringify(entry)}\n`, 'utf8');
+    fs.appendFileSync(
+      this.filePath,
+      `${JSON.stringify(entry)}\n`,
+      'utf8',
+    );
+
     return entry;
   }
 
   capture(
     request: Request | undefined,
-    action: Omit<PartialAuditLogEntry, 'actorEmail' | 'actorName'>,
+    action: Omit<
+      PartialAuditLogEntry,
+      'actorEmail' | 'actorName'
+    >,
   ): AuditLogEntry {
     this.rotateIfNeeded();
 
@@ -138,7 +173,9 @@ export class AuditLogService {
       timestamp: new Date().toISOString(),
 
       actorEmail: user?.email ?? action.entityValue ?? 'anonymous',
-      actorName: user?.name ?? action.entityValue ?? 'Anonymous User',
+
+      actorName:
+        user?.name ?? action.entityValue ?? 'Anonymous User',
 
       action: action.action,
       entityType: action.entityType,
@@ -153,11 +190,16 @@ export class AuditLogService {
       },
     };
 
-    fs.appendFileSync(this.filePath, `${JSON.stringify(entry)}\n`, 'utf8');
+    fs.appendFileSync(
+      this.filePath,
+      `${JSON.stringify(entry)}\n`,
+      'utf8',
+    );
+
     return entry;
   }
 
-  list(limit = 100): AuditLogEntry[] {
+  list(limit = 50000): AuditLogEntry[] {
     if (!fs.existsSync(this.filePath)) return [];
 
     const lines = fs
@@ -179,32 +221,37 @@ export class AuditLogService {
       .reverse();
   }
 
-  // ⭐ Return ALL logs from ALL rotated files (for frontend)
+  // ⭐ Return ALL logs from ALL rotated files
   getAllLogs(): AuditLogEntry[] {
     const dir = path.dirname(this.filePath);
 
     const files = fs
       .readdirSync(dir)
-      .filter((f) => f.startsWith('audit-log.jsonl'));
+      .filter((f) => f.startsWith('audit-log.jsonl'))
+      .sort();
 
     let entries: AuditLogEntry[] = [];
 
     for (const file of files) {
       const fullPath = path.join(dir, file);
 
-      const lines = fs
-        .readFileSync(fullPath, 'utf8')
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean);
+      try {
+        const lines = fs
+          .readFileSync(fullPath, 'utf8')
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
 
-      for (const line of lines) {
-        try {
-          entries.push(JSON.parse(line));
-        } catch {}
-      }
+        for (const line of lines) {
+          try {
+            entries.push(JSON.parse(line));
+          } catch {}
+        }
+      } catch {}
     }
 
-    return entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+    return entries.sort((a, b) =>
+      a.timestamp < b.timestamp ? 1 : -1,
+    );
   }
 }
