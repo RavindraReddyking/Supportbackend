@@ -83,3 +83,28 @@ export class UserEmailLookupDto {
   @Matches(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/)
   email!: string;
 }
+
+const IP_RE =
+  /^(([0-9]{1,3}\.){3}[0-9]{1,3}|([a-fA-F0-9:]+))$/;
+
+export class GameTraceDto {
+  @Transform(({ value }) =>
+    trimToString(value),
+  )
+  @IsString()
+  @Matches(IP_RE)
+  ip!: string;
+
+  @IsString()
+  from!: string;
+
+  @IsString()
+  to!: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    trimToString(value),
+  )
+  @IsString()
+  logType?: string;
+}

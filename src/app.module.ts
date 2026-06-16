@@ -10,6 +10,7 @@ import { RoundModule } from './modules/round/round.module';
 import { UserManagementModule } from './modules/user-management/user-management.module';
 import { PlayerBetLogsModule } from './modules/player-bet-logs/player-bet-logs.module';
 import { GameLaunchModule } from './modules/gamelaunch/gamelaunch.module';
+import { GameTraceModule } from './modules/game-trace/game-trace.module';
 
 // ✅ ADD THESE
 import { VaultService } from './vault.service';
@@ -28,6 +29,7 @@ import { VaultLoaderService } from './vault-loader.service';
     CasinoModule,
     UserManagementModule,
     GameLaunchModule,
+    GameTraceModule,
   ],
 
   // ✅ ADD THIS BLOCK

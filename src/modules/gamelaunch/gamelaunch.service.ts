@@ -94,6 +94,15 @@ export class GameLaunchService {
     return null;
   }
 
+  
+private isLobbyGame(gameName?: string): boolean {
+  return (
+    gameName?.toLowerCase().includes('lobby') ||
+    false
+  );
+}
+
+
   // =====================================================
   // PLATFORM ENABLED GAMES
   // =====================================================
@@ -257,487 +266,419 @@ export class GameLaunchService {
   // =====================================================
   // INVESTIGATION
   // =====================================================
+async investigate(params: {
+  url: string;
+  startDate?: string;
+  endDate?: string;
+  cookies?: string;
+}) {
+  const cleanedUrl =
+    params.url.replace(
+      /&amp;amp;amp;amp;/g,
+      '&amp;amp;amp;',
+    );
 
-  async investigate(params: {
-    url: string;
-    startDate?: string;
-    endDate?: string;
-    cookies?: string;
-  }) {
-    const cleanedUrl =
-      params.url.replace(
-        /&amp;amp;amp;/g,
-        '&amp;amp;',
-      );
+  const parsed = this.parseUrl(cleanedUrl);
 
-    const parsed =
-      this.parseUrl(cleanedUrl);
+  const from =
+    params.startDate ||
+    dayjs()
+      .subtract(24, 'hour')
+      .toISOString();
 
-    const from =
-      params.startDate ||
-      dayjs()
-        .subtract(24, 'hour')
-        .toISOString();
+  const to =
+    params.endDate ||
+    dayjs().toISOString();
 
-    const to =
-      params.endDate ||
-      dayjs().toISOString();
+  const tableConfigResponse: any =
+    await this.repository.getTableConfig(
+      parsed.symbol,
+    );
 
-    const tableConfigResponse: any =
-      await this.repository.getTableConfig(
-        parsed.symbol,
-      );
+  const tableConfig =
+    tableConfigResponse?.recordset?.[0] || null;
 
-    const tableConfig =
-      tableConfigResponse
-        ?.recordset?.[0] || null;
+  const styleName =
+    parsed.stylename ||
+    parsed.secureLogin;
 
-    const styleName =
-      parsed.stylename ||
-      parsed.secureLogin;
+  const casinoResponse: any =
+    await this.repository.findCasinoUsers(
+      styleName || '',
+    );
 
-    const casinoResponse: any =
-      await this.repository.findCasinoUsers(
-        styleName || '',
-      );
+  let casinos = casinoResponse?.recordset || [];
 
-    let casinos =
-      casinoResponse
-        ?.recordset || [];
+  const token =
+    parsed.token ||
+    parsed.tc ||
+    parsed.ppToken;
 
-    const token =
-      parsed.token ||
-      parsed.tc ||
-      parsed.ppToken;
+  // =====================================================
+  // ✅ STEP 1: ENTRY LOG SEARCH
+  // =====================================================
 
-    const rawLogs =
-      await this.repository.searchGameLaunchLogs(
-        {
-          token:
-            token || '',
-          gameId:
-            parsed.symbol,
-          from,
-          to,
-        },
-      );
+  const rawLogs =
+    await this.repository.searchGameLaunchLogs({
+      token: token || '',
+      gameId: parsed.symbol,
+      from,
+      to,
+    });
 
-    const logs =
-      this.filterGameLaunchLogs(
-        rawLogs,
-        token || '',
-      );
+  console.log(
+    'RAW LOGS FULL:',
+    JSON.stringify(rawLogs, null, 2),
+  );
 
-console.log(
-  'TOTAL MATCHED LOGS:',
-  logs.length,
-);
+  const logs =
+    this.filterGameLaunchLogs(
+      rawLogs,
+      token || '',
+    );
 
-    // =====================================================
-    // CASINO MATCHING
-    // =====================================================
+  console.log(
+    'TOTAL MATCHED LOGS:',
+    logs.length,
+  );
 
-    if (casinos.length > 1) {
-      
-console.log(
-  'MULTIPLE CASINOS FOUND',
-);
+  // =====================================================
+  // ✅ STEP 2: UUID EXTRACTION (FIXED ✅)
+  // =====================================================
 
-console.log(
-  'TRYING CONTEXTMAP CASINO MATCH',
-);
+  const getUUID = (log: any) => {
+    return (
+      log?.contextMap?.uuid ||
+      log?.contextMap?.['uuid:'] ||
+      null
+    );
+  };
 
-      let matchedCasinoId =
-        logs.find(
-          (x: any) =>
-            x?.contextMap
-              ?.casinoId,
-        )?.contextMap
-          ?.casinoId;
+  const entryLog = rawLogs.find((x: any) =>
+    getUUID(x),
+  );
 
-console.log(
-  'CONTEXTMAP MATCHED CASINO:',
-  matchedCasinoId,
-);
+  const uuid = getUUID(entryLog);
 
-      // FALLBACK USING app.casinoID + stage
-      if (!matchedCasinoId) {
-        
-console.log(
-  'CONTEXTMAP FAILED -> USING FALLBACK FLOW',
-);
+  console.log('UUID FOUND:', uuid);
 
-        const fallbackLog =
-        
-          logs.find(
-            (x: any) =>
-              x?.app?.casinoID &&
-              x?.stage,
-          );
+  // =====================================================
+  // ✅ STEP 3: UUID SEARCH
+  // =====================================================
 
-console.log(
-  'FALLBACK LOG FOUND:',
-  Boolean(fallbackLog),
-);
+  let uuidLogs: any[] = [];
 
-        if (fallbackLog) {
-          const shortCasinoId =
-            `${fallbackLog.app.casinoID}`;
-
-          const envFromStage =
-            fallbackLog.stage
-              ?.replace(
-                /^prod[-_]?/i,
-                '',
-              )
-              ?.toLowerCase();
-
-console.log({
-  shortCasinoId,
-  envFromStage,
-});
-
-          matchedCasinoId =
-            casinos.find(
-              (casino: any) => {
-                const casinoId =
-                  `${casino.casino_id}`;
-
-                const numericCasinoId =
-                  casinoId.replace(
-                    /\D/g,
-                    '',
-                  );
-
-                const casinoEnv =
-                  casinoId
-                    .replace(
-                      /^ppc/i,
-                      '',
-                    )
-                    .replace(
-                      /\d+$/,
-                      '',
-                    )
-                    .toLowerCase();
-
-                let envMatched =
-                  false;
-
-                if (
-                  /^[a-z]+0$/i.test(
-                    envFromStage,
-                  )
-                ) {
-                  const baseEnv =
-                    envFromStage.slice(
-                      0,
-                      -1,
-                    );
-
-                  envMatched =
-                    casinoEnv ===
-                      baseEnv ||
-                    casinoEnv ===
-                      envFromStage;
-                } else {
-                  envMatched =
-                    casinoEnv ===
-                    envFromStage;
-                }
-
-                const casinoMatched =
-                  Number(
-                    numericCasinoId,
-                  ) ===
-                    Number(
-                      shortCasinoId,
-                    ) &&
-                  envMatched;
-
-                return casinoMatched;
-              },
-            )?.casino_id;
-        }
-      }
-
-
-      if (matchedCasinoId) {
-        console.log(
-  'FINAL MATCHED CASINO:',
-  matchedCasinoId,
-);
-        casinos =
-          casinos.filter(
-            (x: any) =>
-              `${x.casino_id}` ===
-              `${matchedCasinoId}`,
-          );
-      }
-    }
-
-    const casinoData: any[] = [];
-
-    for (const casino of casinos) {
-      const result =
-        await this.buildCasinoResult(
-          casino,
-          parsed.symbol,
-          tableConfig,
-          params.cookies ||
-            '',
-        );
-
-      casinoData.push(result);
-    }
-
-    return {
-      success: true,
-
-      duration: {
+  if (uuid) {
+    uuidLogs =
+      await this.repository.searchLogsByUUID({
+        uuid,
         from,
         to,
-      },
+      });
+  }
 
-      parsed,
+  console.log(
+    'UUID LOG COUNT:',
+    uuidLogs.length,
+  );
 
-      gameDetails: {
-        gameId:
-          tableConfig
-            ?.operator_game_id ||
-          parsed.symbol,
+  // =====================================================
+  // ✅ STEP 4: CONFIG DETECTION (IMPROVED ✅)
+  // =====================================================
 
-        tableName:
-          tableConfig
-            ?.table_name ||
-          '',
+  const logsToCheck =
+    uuidLogs.length > 0
+      ? uuidLogs
+      : rawLogs;
 
-        tableId:
-          tableConfig
-            ?.table_id ||
-          '',
+  const configErrorLog =
+    logsToCheck.find((log: any) => {
+      const msg =
+        log?.message ||
+        log?.error ||
+        JSON.stringify(log);
 
-        lcEnabled:
-          Boolean(
-            casinoData?.[0]
-              ?.lcEnabled,
-          ),
+      return (
+        msg.includes('Impl not found') ||
+        msg.includes(
+          'Missing Impl for casino',
+        )
+      );
+    });
 
-        platformEnabled:
-          Boolean(
-            casinoData?.[0]
-              ?.platformEnabled,
-          ),
+  const isConfigIssue =
+    Boolean(configErrorLog);
 
-        tableOpen:
-          casinoData?.[0]
-            ?.tableOpen ??
-          null,
-      },
+  console.log(
+    'CONFIG ISSUE DETECTED:',
+    isConfigIssue,
+  );
 
-      baseTableData:
-        casinoData?.[0]
-          ?.baseTableData ||
-        null,
+  // =====================================================
+  // ✅ CASINO MATCHING (UNCHANGED)
+  // =====================================================
+// =====================================================
+// ✅ FINAL DECISION FLOW (FIXED ✅)
+// =====================================================
 
-      chromaTables:
-        casinoData?.[0]
-          ?.chromaTables ||
-        [],
+const hasLogs =
+  (uuidLogs && uuidLogs.length > 0) ||
+  (rawLogs && rawLogs.length > 0);
 
-      casinos:
-        casinoData.map(
-          ({
-            lcEnabled,
-            platformEnabled,
-            tableOpen,
-            baseTableData,
-            chromaTables,
-            ...casino
-          }: any) => casino,
-        ),
+const singleCasino = casinos.length === 1;
 
-      logs:
-        this.mapLogs(logs),
-    };
+// ✅ MULTIPLE CASINOS + LOGS → FILTER
+if (!singleCasino && hasLogs) {
+ 
+let matchedCasinoId =
+  uuidLogs.find((x: any) =>
+    x?.contextMap?.casinoId,
+  )?.contextMap?.casinoId ||
+  rawLogs.find((x: any) =>
+    x?.contextMap?.casinoId,
+  )?.contextMap?.casinoId;
+
+  if (matchedCasinoId) {
+    casinos = casinos.filter(
+      (x: any) =>
+        `${x.casino_id}` ===
+        `${matchedCasinoId}`,
+    );
+  }
+}
+
+// ✅ MULTIPLE + NO LOGS → DO NOTHING ✅
+// ✅ SINGLE CASINO → DO NOTHING ✅
+ 
+  const casinoData: any[] = [];
+
+  for (const casino of casinos) {
+    const result =
+      await this.buildCasinoResult(
+        casino,
+        parsed.symbol,
+        tableConfig,
+        params.cookies || '',
+      );
+
+    casinoData.push(result);
   }
 
   // =====================================================
-  // BUILD CASINO RESULT
+  // ✅ FINAL RESPONSE
   // =====================================================
 
-  private async buildCasinoResult(
-    casino: any,
-    symbol: string,
-    tableConfig: any,
-    cookies: string,
-  ) {
-    const casinoId =
-      casino.casino_id;
+  return {
+    success: true,
 
-    const [
-      lcTables,
-      platformGames,
-    ] = await Promise.all([
+    issueType: isConfigIssue
+      ? 'CONFIG'
+      : 'NORMAL',
+
+    configError: isConfigIssue
+      ? configErrorLog?.message
+      : null,
+
+    duration: { from, to },
+
+    parsed,
+
+    
+gameDetails: {
+  gameId:
+    tableConfig?.operator_game_id ||
+    parsed.symbol,
+
+  tableName:
+    tableConfig?.table_name ||
+    casinoData?.[0]
+      ?.platformGameName ||
+    '',
+
+  tableId:
+    casinoData?.[0]?.lcEnabled ===
+    'NA'
+      ? 'NA'
+      : tableConfig?.table_id ||
+        'NA',
+},
+
+    baseTableData:
+      casinoData?.[0]?.baseTableData ||
+      null,
+
+    chromaTables:
+      casinoData?.[0]?.chromaTables ||
+      [],
+
+   casinos: casinoData,
+
+    logs: this.mapLogs(logs),
+  };
+}
+  // =====================================================
+  // BUILD CASINO RESULT
+  // =====================================================
+private async buildCasinoResult(
+  casino: any,
+  symbol: string,
+  tableConfig: any,
+  cookies: string,
+) {
+  const casinoId = casino.casino_id;
+
+  const [lcTables, platformGames] =
+    await Promise.all([
       this.getLcEnabledTables(
         casinoId,
         cookies,
       ),
-
-      this.getCasinoGames(
-        casinoId,
-      ),
+      this.getCasinoGames(casinoId),
     ]);
 
-    const lcMatch =
-      lcTables?.find(
-        (x: any) =>
-          `${x.operator_game_id}` ===
-            `${symbol}` ||
-          `${x.gameID}` ===
-            `${symbol}` ||
-          `${x.gameid}` ===
-            `${symbol}` ||
-          `${x.symbol}` ===
-            `${symbol}` ||
-          `${x.operatorGameId}` ===
-            `${symbol}`,
-      );
+  const games =
+    platformGames?.data?.games || [];
 
-    const games =
-      platformGames?.data
-        ?.games || [];
+  const platformMatch = games.find(
+    (x: any) =>
+      `${x.gameID}` === `${symbol}`,
+  );
 
-    const platformMatch =
-      games.find(
-        (x: any) =>
-          `${x.gameID}` ===
+  const platformGameName =
+    platformMatch?.gameName ||
+    platformMatch?.name ||
+    platformMatch?.game_name ||
+    '';
+
+  const isLobby =
+    this.isLobbyGame(
+      platformGameName,
+    );
+
+  const lcMatch =
+    lcTables?.find(
+      (x: any) =>
+        `${x.operator_game_id}` ===
+        `${symbol}` ||
+        `${x.gameID}` ===
+          `${symbol}` ||
+        `${x.gameid}` ===
+          `${symbol}` ||
+        `${x.symbol}` ===
+          `${symbol}` ||
+        `${x.operatorGameId}` ===
           `${symbol}`,
+    );
+
+  const baseFamily =
+    symbol.match(/^\d+/)?.[0] ||
+    symbol;
+
+  const lcGameIds = lcTables.map(
+    (x: any) =>
+      `${x.operator_game_id}`,
+  );
+
+  const baseTableLcEnabled =
+    lcGameIds.includes(baseFamily);
+
+  const baseTablePlatformEnabled =
+    games.some(
+      (x: any) =>
+        `${x.gameID}` === baseFamily,
+    );
+
+  const chromaPlatformGames =
+    games.filter((x: any) => {
+      const gameId = `${x.gameID}`;
+      return (
+        gameId.startsWith(baseFamily) &&
+        gameId !== baseFamily
       );
+    });
 
-    const baseFamily =
-      symbol.match(/^\d+/)?.[0] ||
-      symbol;
+  const lcActiveTable =
+    lcGameIds.find((x: string) =>
+      x.startsWith(baseFamily),
+    ) || null;
 
-    const lcGameIds =
-      lcTables.map(
-        (x: any) =>
-          `${x.operator_game_id}`,
-      );
+  return {
+    casinoId,
 
-    const baseTableLcEnabled =
-      lcGameIds.includes(
-        baseFamily,
-      );
+    
+casinoName:
+  casino.casino_desc ||
+  lcMatch?.casino_desc ||
+  casino.email_address,
 
-    const baseTablePlatformEnabled =
-      games.some(
-        (x: any) =>
-          `${x.gameID}` ===
-          baseFamily,
-      );
+    envName:
+      platformGames?.env ||
+      lcMatch?.env_name ||
+      '',
 
-    const chromaPlatformGames =
-      games.filter(
-        (x: any) => {
-          const gameId =
-            `${x.gameID}`;
+    casinoactiveFlag:
+      casino.active_flag,
 
-          return (
-            gameId.startsWith(
-              baseFamily,
-            ) &&
-            gameId !==
-              baseFamily
-          );
-        },
-      );
+    baseTableData: {
+      baseTable: baseFamily,
 
-    const uniqueChromaTables =
-      [
-        ...new Set(
-          chromaPlatformGames.map(
-            (x: any) =>
-              `${x.gameID}`,
-          ),
-        ),
-      ];
-
-    const lcActiveTable =
-      lcGameIds.find(
-        (x: string) =>
-          x.startsWith(
-            baseFamily,
-          ),
-      ) || null;
-
-    return {
-      casinoId,
-
-      casinoName:
-        lcMatch?.casino_desc ||
-        casino.email_address,
-
-      envName:
-        platformGames?.env ||
-        lcMatch?.env_name ||
-        '',
-
-      casinoactiveFlag:
-        casino.active_flag,
-
-      baseTableData: {
-        baseTable:
-          baseFamily,
-
-        lcEnabled:
-          baseTableLcEnabled,
-
-        platformEnabled:
-          baseTablePlatformEnabled,
-
-        lcActiveTable,
-      },
-
-      chromaTables:
-        uniqueChromaTables
-          .map((tableId) => ({
-            symbol: tableId,
-
-            platformEnabled:
-              chromaPlatformGames.some(
-                (x: any) =>
-                  `${x.gameID}` ===
-                  tableId,
-              ),
-
-            lcEnabled:
-              lcGameIds.includes(
-                tableId,
-              ),
-          }))
-          .filter(
-            (x) =>
-              x.platformEnabled ||
-              x.lcEnabled,
-          ),
-
-      lcEnabled:
-        Boolean(
-          lcMatch,
-        ),
+      lcEnabled: isLobby
+        ? 'NA'
+        : baseTableLcEnabled,
 
       platformEnabled:
-        Boolean(
-          platformMatch,
-        ),
+        baseTablePlatformEnabled,
 
-      tableOpen:
-        lcMatch?.table_open ??
-        null,
-    };
-  }
+      lcActiveTable,
+    },
 
+    chromaTables:
+      chromaPlatformGames
+        .map((game: any) => ({
+          gameId:
+            `${game.gameID}`,
+
+          gameName:
+            game.gameName ||
+            game.name ||
+            game.game_name ||
+            '',
+
+          platformEnabled: true,
+
+          lcEnabled:
+            this.isLobbyGame(
+              game.gameName ||
+                game.name,
+            )
+              ? 'NA'
+              : lcGameIds.includes(
+                  `${game.gameID}`,
+                ),
+        }))
+        
+.filter(
+  (x: any) =>
+    x.platformEnabled ||
+    x.lcEnabled,
+),
+
+    // ✅ THIS WAS MISSING
+    lcEnabled: isLobby
+      ? 'NA'
+      : Boolean(lcMatch),
+
+    platformEnabled:
+      Boolean(platformMatch),
+
+    tableOpen:
+      lcMatch?.table_open ?? null,
+
+    // ✅ needed for investigate()
+    platformGameName,
+  };
+}
+  
   // =====================================================
   // FILTER GAME LAUNCH LOGS
   // =====================================================

@@ -24,19 +24,15 @@ export class GameLaunchRepository {
 
   private headers() {
     return {
-      'Content-Type':
-        'application/json',
-
+      'Content-Type': 'application/json',
       Accept: '*/*',
-
       'kbn-xsrf': 'true',
-
       Authorization: `ApiKey ${process.env.KIBANA_API_KEY}`,
     };
   }
 
   // =====================================================
-  // SEARCH FILEBEAT LOGS
+  // SEARCH FILEBEAT LOGS (✅ UPDATED WITH DSL SUPPORT)
   // =====================================================
 
   private async searchFilebeatLogs(
@@ -48,6 +44,30 @@ export class GameLaunchRepository {
       index?: string;
     },
   ) {
+    let esQuery;
+
+    // ✅ UUID SPECIAL CASE (DSL)
+    if (params.query.startsWith('UUID_SEARCH=')) {
+      const uuid = params.query.replace(
+        'UUID_SEARCH=',
+        '',
+      );
+
+      esQuery = {
+        match_phrase: {
+          'contextMap.uuid:': uuid, // ✅ correct for your logs
+        },
+      };
+    } else {
+      // ✅ NORMAL FLOW (unchanged)
+      esQuery = {
+        query_string: {
+          query: params.query,
+          default_operator: 'AND',
+        },
+      };
+    }
+
     const body = {
       size: params.size ?? 2000,
 
@@ -87,16 +107,7 @@ export class GameLaunchRepository {
 
       query: {
         bool: {
-          must: [
-            {
-              query_string: {
-                query: params.query,
-
-                default_operator:
-                  'AND',
-              },
-            },
-          ],
+          must: [esQuery],
 
           filter: [
             {
@@ -118,7 +129,6 @@ export class GameLaunchRepository {
         body,
         {
           headers: this.headers(),
-
           timeout: 120000,
         },
       );
@@ -126,19 +136,16 @@ export class GameLaunchRepository {
       const hits =
         res.data?.hits?.hits || [];
 
-      return hits.map(
-        (x: any) => ({
-          _id: x._id,
-          _index: x._index,
-          ...x._source,
-        }),
-      );
+      return hits.map((x: any) => ({
+        _id: x._id,
+        _index: x._index,
+        ...x._source,
+      }));
     } catch (error: any) {
       this.logger.error(
         error?.response?.data ||
           error?.message,
       );
-
       throw error;
     }
   }
@@ -147,11 +154,8 @@ export class GameLaunchRepository {
   // PLATFORM GAME DETAILS
   // =====================================================
 
-  async getCasinoDetails(
-    casinoId: string,
-  ) {
-    const dbenv =
-      process.env.DBENV;
+  async getCasinoDetails(casinoId: string) {
+    const dbenv = process.env.DBENV;
 
     return this.database.query(
       (request) =>
@@ -162,15 +166,15 @@ export class GameLaunchRepository {
         ),
 
       `
-        SELECT TOP 1
-          owc.casino_id,
-          e.login,
-          e.name AS env,
-          owc.UCID
-        FROM ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
-        INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
-          ON e.env_id = owc.env
-        WHERE owc.casino_id = @CasinoId
+SELECT TOP 1
+  owc.casino_id,
+  e.login,
+  e.name AS env,
+  owc.UCID
+FROM ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
+INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
+  ON e.env_id = owc.env
+WHERE owc.casino_id = @CasinoId
       `,
     );
   }
@@ -179,11 +183,8 @@ export class GameLaunchRepository {
   // TABLE CONFIG
   // =====================================================
 
-  async getTableConfig(
-    operatorGameId: string,
-  ) {
-    const dbenv =
-      process.env.DBENV;
+  async getTableConfig(operatorGameId: string) {
+    const dbenv = process.env.DBENV;
 
     return this.database.query(
       (request) =>
@@ -194,12 +195,12 @@ export class GameLaunchRepository {
         ),
 
       `
-        SELECT TOP 1
-          table_name,
-          table_id,
-          operator_game_id
-        FROM ${dbenv}.tableconfig WITH (NOLOCK)
-        WHERE operator_game_id = @OperatorGameId
+SELECT TOP 1
+  table_name,
+  table_id,
+  operator_game_id
+FROM ${dbenv}.tableconfig WITH (NOLOCK)
+WHERE operator_game_id = @OperatorGameId
       `,
     );
   }
@@ -208,11 +209,8 @@ export class GameLaunchRepository {
   // CASINO USER DETAILS
   // =====================================================
 
-  async findCasinoUsers(
-    styleName: string,
-  ) {
-    const dbenv =
-      process.env.DBENV;
+  async findCasinoUsers(styleName: string) {
+    const dbenv = process.env.DBENV;
 
     return this.database.query(
       (request) =>
@@ -223,50 +221,67 @@ export class GameLaunchRepository {
         ),
 
       `
-        SELECT DISTINCT
-          email_address,
-          casino_id,
-          active_flag
-        FROM ${dbenv}.casinouser WITH (NOLOCK)
-        WHERE email_address = @StyleName
-        AND usertype_code = 'SYST'
+SELECT DISTINCT
+  cu.email_address,
+  cu.casino_id,
+  cu.active_flag,
+  c.casino_desc
+FROM ${dbenv}.casinouser cu WITH (NOLOCK)
+INNER JOIN ${dbenv}.casino c WITH (NOLOCK)
+  ON c.casino_id = cu.casino_id
+WHERE cu.email_address = @StyleName
+AND cu.usertype_code = 'SYST'
       `,
     );
   }
 
   // =====================================================
-  // GAME LAUNCH LOGS
+  // GAME LAUNCH LOGS (ENTRY SEARCH ✅)
   // =====================================================
 
-  async searchGameLaunchLogs(
-    params: {
-      token: string;
-      gameId: string;
-      from: string;
-      to: string;
-    },
-  ) {
+  async searchGameLaunchLogs(params: {
+    token: string;
+    gameId: string;
+    from: string;
+    to: string;
+  }) {
     this.logger.log(
       `[GAME_LAUNCH] token=${params.token} | gameId=${params.gameId}`,
     );
 
     const finalQuery = `
-      "${params.token}"
+      "processRequest GET query string"
+      AND "${params.token}"
     `;
 
-    const logs =
-      await this.searchFilebeatLogs({
-        query: finalQuery,
+    return this.searchFilebeatLogs({
+      query: finalQuery,
+      from: params.from,
+      to: params.to,
+      size: 3000,
+      index: 'filebeat-*',
+    });
+  }
 
-        from: params.from,
+  // =====================================================
+  // ✅ UUID SEARCH (FIXED ✅)
+  // =====================================================
 
-        to: params.to,
+  async searchLogsByUUID(params: {
+    uuid: string;
+    from: string;
+    to: string;
+  }) {
+    this.logger.log(
+      `[UUID_SEARCH] uuid=${params.uuid}`,
+    );
 
-        size: 3000,
-
-        index: 'filebeat-*',
-      });
-
-    return logs;
+    return this.searchFilebeatLogs({
+      query: `UUID_SEARCH=${params.uuid}`, // ✅ triggers DSL
+      from: params.from,
+      to: params.to,
+      size: 3000,
+      index: 'filebeat-*',
+    });
   }
 }
