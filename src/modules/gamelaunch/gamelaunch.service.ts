@@ -308,6 +308,9 @@ async investigate(params: {
     );
 
   let casinos = casinoResponse?.recordset || [];
+  console.log("STYLE NAME:", styleName);
+console.log("CASINO RESPONSE:", JSON.stringify(casinoResponse, null, 2));
+console.log("CASINOS LENGTH:", casinos.length);
 
   const token =
     parsed.token ||
@@ -409,10 +412,37 @@ async investigate(params: {
   const isConfigIssue =
     Boolean(configErrorLog);
 
+    
+// ✅ STEP: IF CONFIG ISSUE → RETURN EARLY ✅
+if (isConfigIssue) {
+  return {
+    success: true,
+    issueType: 'CONFIG',
+    configError: configErrorLog?.message || null,
+    duration: { from, to },
+    parsed,
+    logs: this.mapLogs(logsToCheck), // ✅ show relevant logs
+  };
+}
+
+
+
   console.log(
     'CONFIG ISSUE DETECTED:',
     isConfigIssue,
   );
+
+
+  
+// STEP: NO CONFIG → FETCH FULL LOGS ✅
+const fullLogs =
+  await this.repository.searchAllLogsByToken({
+    token: token || '',
+    from,
+    to,
+  });
+
+console.log('FULL TOKEN LOGS:', fullLogs.length);
 
   // =====================================================
   // ✅ CASINO MATCHING (UNCHANGED)
@@ -513,12 +543,14 @@ gameDetails: {
 
    casinos: casinoData,
 
-    logs: this.mapLogs(logs),
+logs: this.mapLogs(fullLogs),
   };
 }
   // =====================================================
   // BUILD CASINO RESULT
-  // =====================================================
+// =====================================================
+// ✅ FINAL BUILD CASINO RESULT
+// =====================================================
 private async buildCasinoResult(
   casino: any,
   symbol: string,
@@ -529,56 +561,22 @@ private async buildCasinoResult(
 
   const [lcTables, platformGames] =
     await Promise.all([
-      this.getLcEnabledTables(
-        casinoId,
-        cookies,
-      ),
+      this.getLcEnabledTables(casinoId, cookies),
       this.getCasinoGames(casinoId),
     ]);
 
   const games =
     platformGames?.data?.games || [];
 
-  const platformMatch = games.find(
-    (x: any) =>
-      `${x.gameID}` === `${symbol}`,
-  );
-
-  const platformGameName =
-    platformMatch?.gameName ||
-    platformMatch?.name ||
-    platformMatch?.game_name ||
-    '';
-
-  const isLobby =
-    this.isLobbyGame(
-      platformGameName,
-    );
-
-  const lcMatch =
-    lcTables?.find(
-      (x: any) =>
-        `${x.operator_game_id}` ===
-        `${symbol}` ||
-        `${x.gameID}` ===
-          `${symbol}` ||
-        `${x.gameid}` ===
-          `${symbol}` ||
-        `${x.symbol}` ===
-          `${symbol}` ||
-        `${x.operatorGameId}` ===
-          `${symbol}`,
-    );
-
   const baseFamily =
-    symbol.match(/^\d+/)?.[0] ||
-    symbol;
+    symbol.match(/^\d+/)?.[0] || symbol;
 
+  // ✅ LC TABLE IDS
   const lcGameIds = lcTables.map(
-    (x: any) =>
-      `${x.operator_game_id}`,
+    (x: any) => `${x.operator_game_id}`,
   );
 
+  // ✅ BASE TABLE STATUS
   const baseTableLcEnabled =
     lcGameIds.includes(baseFamily);
 
@@ -588,97 +586,74 @@ private async buildCasinoResult(
         `${x.gameID}` === baseFamily,
     );
 
-  const chromaPlatformGames =
-    games.filter((x: any) => {
-      const gameId = `${x.gameID}`;
-      return (
-        gameId.startsWith(baseFamily) &&
-        gameId !== baseFamily
-      );
-    });
-
   const lcActiveTable =
     lcGameIds.find((x: string) =>
       x.startsWith(baseFamily),
     ) || null;
 
+  // ✅ FIND CHROMA TABLES
+  const chromaPlatformGames =
+    games.filter((x: any) => {
+      const id = `${x.gameID}`;
+      return (
+        id.startsWith(baseFamily) &&
+        id !== baseFamily
+      );
+    });
+
   return {
     casinoId,
 
-    
-casinoName:
-  casino.casino_desc ||
-  lcMatch?.casino_desc ||
-  casino.email_address,
+    casinoName:
+      casino.casino_desc ||
+      casino.email_address,
 
     envName:
-      platformGames?.env ||
-      lcMatch?.env_name ||
-      '',
+      platformGames?.env || '',
 
     casinoactiveFlag:
       casino.active_flag,
 
+    // ✅ ✅ BASE TABLE (ALWAYS)
     baseTableData: {
       baseTable: baseFamily,
-
-      lcEnabled: isLobby
-        ? 'NA'
-        : baseTableLcEnabled,
-
+      lcEnabled: baseTableLcEnabled,
       platformEnabled:
         baseTablePlatformEnabled,
-
       lcActiveTable,
     },
 
+    // ✅ ✅ CHROMA TABLES
     chromaTables:
-      chromaPlatformGames
-        .map((game: any) => ({
-          gameId:
-            `${game.gameID}`,
+      chromaPlatformGames.length === 0
+        ? []
+        : chromaPlatformGames.map(
+            (game: any) => ({
+              gameId: `${game.gameID}`,
 
-          gameName:
-            game.gameName ||
-            game.name ||
-            game.game_name ||
-            '',
+              gameName:
+                game.gameName ||
+                game.name ||
+                game.game_name ||
+                '',
 
-          platformEnabled: true,
+              // ✅ platform status (dynamic)
+              platformEnabled:
+                games.some(
+                  (x: any) =>
+                    `${x.gameID}` ===
+                    `${game.gameID}`,
+                ),
 
-          lcEnabled:
-            this.isLobbyGame(
-              game.gameName ||
-                game.name,
-            )
-              ? 'NA'
-              : lcGameIds.includes(
+              // ✅ LC status per chroma
+              lcEnabled:
+                lcGameIds.includes(
                   `${game.gameID}`,
                 ),
-        }))
-        
-.filter(
-  (x: any) =>
-    x.platformEnabled ||
-    x.lcEnabled,
-),
-
-    // ✅ THIS WAS MISSING
-    lcEnabled: isLobby
-      ? 'NA'
-      : Boolean(lcMatch),
-
-    platformEnabled:
-      Boolean(platformMatch),
-
-    tableOpen:
-      lcMatch?.table_open ?? null,
-
-    // ✅ needed for investigate()
-    platformGameName,
+            }),
+          ),
   };
 }
-  
   // =====================================================
   // FILTER GAME LAUNCH LOGS
   // =====================================================

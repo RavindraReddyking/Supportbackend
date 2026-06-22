@@ -284,4 +284,29 @@ AND cu.usertype_code = 'SYST'
       index: 'filebeat-*',
     });
   }
+
+// =====================================================
+// ✅ FULL TOKEN LOG SEARCH (NO QUERY STRING FILTER)
+// =====================================================
+
+async searchAllLogsByToken(params: {
+  token: string;
+  from: string;
+  to: string;
+}) {
+  this.logger.log(
+    `[TOKEN_FULL_SEARCH] token=${params.token}`,
+  );
+
+  const finalQuery = `"${params.token}"`;
+
+  return this.searchFilebeatLogs({
+    query: finalQuery,
+    from: params.from,
+    to: params.to,
+    size: 5000, // ✅ more logs
+    index: 'filebeat-*',
+  });
+}
+
 }
