@@ -29,21 +29,59 @@ export class GameLaunchRepository {
       'kbn-xsrf': 'true',
       Authorization: `ApiKey ${process.env.KIBANA_API_KEY}`,
     };
+
+  }
+ private getIndexes3Days(
+  from: string,
+  to: string,
+): string[] {
+  const start = new Date(from);
+  const end = new Date(to);
+
+  start.setUTCDate(
+    start.getUTCDate() - 1,
+  );
+
+  const indexes: string[] = [];
+
+  const current = new Date(start);
+
+  while (current <= end) {
+    const yyyy =
+      current.getUTCFullYear();
+
+    const mm = String(
+      current.getUTCMonth() + 1,
+    ).padStart(2, '0');
+
+    const dd = String(
+      current.getUTCDate(),
+    ).padStart(2, '0');
+
+    indexes.push(
+      `filebeat-*${yyyy}.${mm}.${dd}*`,
+    );
+
+    current.setUTCDate(
+      current.getUTCDate() + 1,
+    );
   }
 
+  return indexes;
+}
   // =====================================================
   // SEARCH FILEBEAT LOGS (✅ UPDATED WITH DSL SUPPORT)
   // =====================================================
-
-  private async searchFilebeatLogs(
-    params: {
-      query: string;
-      from: string;
-      to: string;
-      size?: number;
-      index?: string;
-    },
-  ) {
+private async searchFilebeatLogs(
+  params: {
+    query: string;
+    from: string;
+    to: string;
+    size?: number;
+    index?: string | string[];
+  },
+)
+  {
     let esQuery;
 
     // ✅ UUID SPECIAL CASE (DSL)
@@ -122,32 +160,97 @@ export class GameLaunchRepository {
         },
       },
     };
+const index = Array.isArray(
+  params.index,
+)
+  ? params.index.join(',')
+  : params.index;
+  const maxAttempts = 4;
 
-    try {
-      const res = await axios.post(
-        `${process.env.ES_HOST}/${params.index}/_search`,
-        body,
-        {
-          headers: this.headers(),
-          timeout: 120000,
-        },
-      );
+for (
+  let attempt = 1;
+  attempt <= maxAttempts;
+  attempt++
+) {
+  let timeout = 7000;
 
-      const hits =
-        res.data?.hits?.hits || [];
+  if (attempt === 4) {
+    timeout = 15000;
+  }
 
-      return hits.map((x: any) => ({
-        _id: x._id,
-        _index: x._index,
-        ...x._source,
-      }));
-    } catch (error: any) {
+  try {
+    console.log(
+      'ES INDEXES:',
+      index,
+    );
+
+    console.log(
+      'ES ATTEMPT:',
+      attempt,
+      '| TIMEOUT:',
+      timeout,
+    );
+
+    const searchStart =
+      Date.now();
+
+    const res = await axios.post(
+      `${process.env.ES_HOST}/${index}/_search`,
+      body,
+      {
+        headers: this.headers(),
+        timeout,
+      },
+    );
+
+    console.log(
+      'ES SEARCH TIME:',
+      Date.now() - searchStart,
+      'ms',
+    );
+
+    console.log(
+      'ES TOOK:',
+      res.data?.took,
+      'ms',
+    );
+
+    const hits =
+      res.data?.hits?.hits || [];
+
+    console.log(
+      'ES HITS:',
+      hits.length,
+    );
+
+    return hits.map((x: any) => ({
+      _id: x._id,
+      _index: x._index,
+      ...x._source,
+    }));
+  } catch (error: any) {
+    console.log(
+      'ES ATTEMPT FAILED:',
+      attempt,
+      error?.message,
+    );
+
+    if (
+      attempt === maxAttempts
+    ) {
       this.logger.error(
         error?.response?.data ||
           error?.message,
       );
+
       throw error;
     }
+
+    await new Promise((r) =>
+      setTimeout(r, 1000),
+    );
+  }
+}
   }
 
   // =====================================================
@@ -204,6 +307,133 @@ WHERE operator_game_id = @OperatorGameId
       `,
     );
   }
+//To get All Chroma//
+async getTableFamily(operatorGameId: string) {
+  const dbenv = process.env.DBENV;
+
+  return this.database.query(
+    (request) =>
+      request.input(
+        'OperatorGameId',
+        sql.VarChar(50),
+        operatorGameId,
+      ),
+
+    `
+WITH table_family AS (
+    SELECT
+        table_name,
+        table_id,
+        operator_game_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY operator_game_id
+            ORDER BY table_id
+        ) AS rn
+    FROM ${dbenv}.tableconfig WITH (NOLOCK)
+)
+SELECT
+    table_name,
+    table_id,
+    operator_game_id
+FROM table_family
+WHERE rn = 1
+AND
+    LEFT(
+        operator_game_id,
+        PATINDEX('%[^0-9]%', operator_game_id + 'A') - 1
+    )
+    =
+    LEFT(
+        @OperatorGameId,
+        PATINDEX('%[^0-9]%', @OperatorGameId + 'A') - 1
+    )
+ORDER BY operator_game_id
+    `,
+  );
+}
+
+// For Multiple Game Family search in Token//
+async getTableFamilies(
+  operatorGameIds: string[],
+) {
+  const dbenv = process.env.DBENV;
+
+  const whereClause = operatorGameIds
+    .map(
+      (_, index) =>
+        `operator_game_id LIKE @id${index}`,
+    )
+    .join(' OR ');
+
+  return this.database.query(
+    (request) => {
+      operatorGameIds.forEach(
+        (id, index) => {
+          request.input(
+            `id${index}`,
+            sql.VarChar(50),
+            `${id}%`,
+          );
+        },
+      );
+
+      return request;
+    },
+
+    `
+SELECT DISTINCT
+    operator_game_id,
+    table_name,
+    table_id
+FROM ${dbenv}.tableconfig WITH (NOLOCK)
+WHERE ${whereClause}
+ORDER BY operator_game_id
+    `,
+  );
+}
+
+// For Multiple Gameid's search in Token//
+async getTableConfigs(
+  casinoId: string,
+  operatorGameIds: string[],
+) {
+  const dbenv = process.env.DBENV;
+
+  const ids = operatorGameIds
+    .map((_, index) => `@id${index}`)
+    .join(',');
+return this.database.query(
+  (request) => {
+    request.input(
+      'CasinoId',
+      sql.VarChar(50),
+      casinoId,
+    );
+
+    operatorGameIds.forEach(
+      (id, index) => {
+        request.input(
+          `id${index}`,
+          sql.VarChar(50),
+          id,
+        );
+      },
+    );
+
+    return request;
+  },
+    `
+SELECT DISTINCT
+    table_name,
+    table_id,
+    operator_game_id
+FROM ${dbenv}.tableconfig WITH (NOLOCK)
+WHERE operator_game_id IN (${ids})
+  AND casino_id = @CasinoId
+ORDER BY operator_game_id
+    `,
+  );
+}
 
   // =====================================================
   // CASINO USER DETAILS
@@ -238,31 +468,54 @@ AND cu.usertype_code = 'SYST'
   // =====================================================
   // GAME LAUNCH LOGS (ENTRY SEARCH ✅)
   // =====================================================
+async searchGameLaunchLogs(params: {
+  token: string;
+  gameId: string;
+  from: string;
+  to: string;
+}) {
+  this.logger.log(
+    `[GAME_LAUNCH] token=${params.token} | gameId=${params.gameId}`,
+  );
 
-  async searchGameLaunchLogs(params: {
-    token: string;
-    gameId: string;
-    from: string;
-    to: string;
-  }) {
-    this.logger.log(
-      `[GAME_LAUNCH] token=${params.token} | gameId=${params.gameId}`,
-    );
+  const encodedToken =
+    encodeURIComponent(params.token);
+    
+console.log(
+  'TOKEN:',
+  params.token,
+);
 
-    const finalQuery = `
-      "processRequest GET query string"
-      AND "${params.token}"
-    `;
+console.log(
+  'ENCODED TOKEN:',
+  encodedToken,
+);
 
-    return this.searchFilebeatLogs({
-      query: finalQuery,
-      from: params.from,
-      to: params.to,
-      size: 3000,
-      index: 'filebeat-*',
-    });
-  }
 
+  const finalQuery = `
+    (
+      "${encodedToken}"
+    )
+    AND
+    "processRequest GET query string"
+  `;
+
+  
+const indexes =
+  this.getIndexes3Days(
+    params.from,
+    params.to,
+  );
+
+
+  return this.searchFilebeatLogs({
+    query: finalQuery,
+    from: params.from,
+    to: params.to,
+    size: 3000,
+    index: indexes,
+  });
+}
   // =====================================================
   // ✅ UUID SEARCH (FIXED ✅)
   // =====================================================
@@ -276,12 +529,19 @@ AND cu.usertype_code = 'SYST'
       `[UUID_SEARCH] uuid=${params.uuid}`,
     );
 
+    
+const indexes =
+  this.getIndexes3Days(
+    params.from,
+    params.to,
+  );
+
     return this.searchFilebeatLogs({
       query: `UUID_SEARCH=${params.uuid}`, // ✅ triggers DSL
       from: params.from,
       to: params.to,
       size: 3000,
-      index: 'filebeat-*',
+      index: indexes,
     });
   }
 
@@ -299,13 +559,24 @@ async searchAllLogsByToken(params: {
   );
 
   const finalQuery = `"${params.token}"`;
+console.log(
+  'TOKEN QUERY:',
+  finalQuery,
+);
+  
+const indexes =
+  this.getIndexes3Days(
+    params.from,
+    params.to,
+  );
+
 
   return this.searchFilebeatLogs({
     query: finalQuery,
     from: params.from,
     to: params.to,
     size: 5000, // ✅ more logs
-    index: 'filebeat-*',
+    index: indexes,
   });
 }
 

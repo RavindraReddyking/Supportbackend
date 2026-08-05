@@ -26,6 +26,10 @@ export class DatabaseService {
         encrypt: this.config.get<string>('DB_ENCRYPT', 'false') === 'true',
         trustServerCertificate: true,
       },
+      
+ requestTimeout: 45000, // ✅ ADD THIS (30 seconds)
+    connectionTimeout: 45000, // ✅ optional but recommended
+
     };
   }
 

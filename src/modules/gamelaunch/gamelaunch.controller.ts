@@ -1,5 +1,4 @@
 import type { Request } from 'express';
-
 import {
   Body,
   Controller,
@@ -39,8 +38,7 @@ export class GameLaunchController {
     ) {
       return {
         success: false,
-        message:
-          'casinoid is required',
+        message: 'casinoid is required',
       };
     }
 
@@ -73,14 +71,15 @@ export class GameLaunchController {
   }
 
   // ============================================
-  // 2. GameLaunch Investigation
+  // 2. Investigation
   // ============================================
 
   @Post('investigate')
   async investigate(
     @Body()
     body: {
-      url: string;
+      url?: string;
+      token?: string;
       startDate?: string;
       endDate?: string;
     },
@@ -88,42 +87,66 @@ export class GameLaunchController {
     @Req() request?: Request,
   ) {
     if (
-      !body?.url ||
-      !body.url.trim()
+      (!body?.url ||
+        !body.url.trim()) &&
+      (!body?.token ||
+        !body.token.trim())
     ) {
       return {
         success: false,
         message:
-          'url is required',
+          'url or token is required',
       };
     }
 
     const response =
-      await this.service.investigate({
-        url: body.url,
+      body.token
+        ? await this.service
+            .investigateSession({
+              token: body.token,
 
-        startDate:
-          body.startDate,
+              startDate:
+                body.startDate,
 
-        endDate:
-          body.endDate,
+              endDate:
+                body.endDate,
 
-        cookies:
-          request?.headers
-            ?.cookie || '',
-      });
+              cookies:
+                request?.headers
+                  ?.cookie || '',
+            })
+        : await this.service
+            .investigate({
+              url: body.url!,
+
+              startDate:
+                body.startDate,
+
+              endDate:
+                body.endDate,
+
+              cookies:
+                request?.headers
+                  ?.cookie || '',
+            });
 
     this.auditLogService.capture(
       request,
       {
         action:
-          'GAMELAUNCH_INVESTIGATE',
+          body.token
+            ? 'SESSION_ANALYSIS'
+            : 'GAMELAUNCH_INVESTIGATE',
 
         entityType:
-          'gamelaunch-investigation',
+          body.token
+            ? 'session-analysis'
+            : 'gamelaunch-investigation',
 
         entityValue:
-          body.url,
+          body.token ||
+          body.url ||
+          '',
 
         status:
           response?.success
