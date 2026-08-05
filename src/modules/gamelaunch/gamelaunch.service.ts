@@ -149,35 +149,54 @@ private analyze521(
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
-const regulatedMarkets = [
-  'UK',
-  'IT',
-  'DK',
-  'BS',
-  'ES',
-  'RO',
-  'BG',
-  'PT',
-  'GI',
-  'MT',
-  'PH',
-  'LT',
-  'LV',
-  'EE',
-  'SE',
-  'CO',
-  'GG',
-  'RS',
-  'IM',
-  'GR',
-  'BY',
-  'ZA',
-  'DE',
-  'UA',
-  'NL',
-  'BE',
-  'ON',
+    const regulatedMarkets = [
+  'AB', // Alberta
+  'AQ', // Alberta
+  'GG', // Alderney
+  'X3', // Argentina Other
+  'AT', // Austria
+  'BS', // Bahamas
+  'BY', // Belarus
+  'BE', // Belgium
+  'BR', // Brazil
+  'X1', // Buenos Aires City
+  'X2', // Buenos Aires Province
+  'BG', // Bulgaria
+  'CO', // Colombia
+  'CZ', // Czech Republic
+  'DK', // Denmark
+  'EE', // Estonia
+  'GE', // Georgia
+  'DE', // Germany
+  'GR', // Greece
+  'HU', // Hungary
+  'IE', // Ireland
+  'IM', // Isle of Man
+  'IT', // Italy
+  'LV', // Latvia
+  'LT', // Lithuania
+  'MT', // Malta
+  'MX', // Mexico
+  'NO', // Norway
+  'ON', // Ontario
+  'PR', // Parana (Brazil)
+  'PE', // Peru
+  'PH', // Philippines
+  'PT', // Portugal
+  'RO', // Romania
+  'RS', // Serbia
+  'SK', // Slovakia
+  'SI', // Slovenia
+  'ZA', // South Africa
+  'ES', // Spain
+  'SE', // Sweden
+  'CH', // Switzerland
+  'NL', // Netherlands
+  'UA', // Ukraine
+  'UK', // United Kingdom
+  'GB'
 ];
+
 const geoBlockedCountries = [
   'US',
   'FR',
@@ -189,41 +208,6 @@ const geoBlockedCountries = [
   'SG',
   'IR',
   'AE',
-  'RO',
-];
-
-const market99Jurisdictions = [
-  'AT',
-  'BE',
-  'BG',
-  'BR',
-  'BY',
-  'CH',
-  'CO',
-  'DK',
-  'EE',
-  'GE',
-  'GG',
-  'GR',
-  'HU',
-  'IE',
-  'IM',
-  'IT',
-  'LT',
-  'LV',
-  'MT',
-  'MX',
-  'NL',
-  'ON',
-  'PE',
-  'PH',
-  'RO',
-  'RS',
-  'SE',
-  'UA',
-  'UK',
-  'X1',
-  'ZA',
 ];
 
   const blockedRegions =
@@ -234,6 +218,15 @@ const market99Jurisdictions = [
       .split(',')
       .map((x) => x.trim())
       .filter(Boolean);
+
+      const unblockedRegions =
+  String(
+    regionSettings?.unblockedRegions ||
+    '',
+  )
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
 
 const accessibleJurisdictions =
   String(
@@ -249,6 +242,14 @@ const casinoJurisdiction =
     jurisdictionSettings?.casinoJurisdiction ||
     '',
   ).trim();
+const jurisdictionMatched =
+  casinoJurisdiction &&
+  casinoJurisdiction !== '99' &&
+  casinoJurisdiction.toUpperCase() !== 'ALL' &&
+  (
+    playerCountry === casinoJurisdiction ||
+    playerRegion === casinoJurisdiction
+  );
 
   if (
     blockedCountries.includes(
@@ -277,69 +278,63 @@ const casinoJurisdiction =
         'Player region exists in casino blocked regions.',
     };
   }
+ 
 
-  if (
-    accessibleJurisdictions.length > 0 &&
-    !accessibleJurisdictions.includes(
-      playerCountry,
-    )
-  ) {
-    return {
-      category:
-        'ACCESSIBLE_JURISDICTION_BLOCK',
-
-      recommendation:
-        'Player jurisdiction is not present in accessible jurisdictions.',
-    };
-  }
+// =====================================================
+// CANADA REGION RESTRICTIONS
+// ON and AB must be explicitly present in unblockedRegions
+// =====================================================
 
 if (
-  casinoJurisdiction === '99' &&
-  !market99Jurisdictions.includes(
-    playerCountry,
-  )
+  playerCountry === 'CA' &&
+  ['ON', 'AB'].includes(playerRegion) &&
+  !unblockedRegions.includes(playerRegion)
 ) {
   return {
     category:
-      'UNSUPPORTED_99_MARKET',
+      'RESTRICTED_REGION_BLOCK',
 
     recommendation:
-      `${playerCountry} is not part of supported 99-market jurisdictions.`,
+      `${playerCountry}/${playerRegion} must be explicitly present in unblockedRegions.`,
   };
 }
 
-if (
-  casinoJurisdiction === '99' &&
-  accessibleJurisdictions.length > 0 &&
-  !accessibleJurisdictions.includes(
-    playerCountry,
-  )
-) {
-  return {
-    category:
-      '99_MARKET_ACCESS_RESTRICTED',
-
-    recommendation:
-      `${playerCountry} is not present in accessible jurisdictions.`,
-  };
-}
-
-if (
+const isRegulatedMarket =
   regulatedMarkets.includes(
     playerCountry,
-  ) &&
-  !unblockedCountries.includes(
+  ) ||
+  regulatedMarkets.includes(
+    playerRegion,
+  );
+
+const explicitlyAllowed =
+  accessibleJurisdictions.includes(
     playerCountry,
-  )
-) {
+  ) ||
+  accessibleJurisdictions.includes(
+    playerRegion,
+  ) ||
+  unblockedCountries.includes(
+    playerCountry,
+  ) ||
+  unblockedRegions.includes(
+    playerRegion,
+  );
+  if (
+  !jurisdictionMatched &&
+  isRegulatedMarket &&
+  !explicitlyAllowed
+)
+{
   return {
     category:
       'REGULATED_MARKET_BLOCK',
 
     recommendation:
-      `${playerCountry} is a regulated market and is not present in casino unblocked countries.`,
+      `${playerCountry}/${playerRegion} is a regulated market and is not allowed in accessible/unblocked settings.`,
   };
 }
+
 console.log(
   'PLAYER COUNTRY:',
   JSON.stringify(playerCountry),
@@ -356,13 +351,15 @@ console.log(
     playerCountry,
   ),
 );
-
 if (
   geoBlockedCountries.includes(
     playerCountry,
   ) &&
   !unblockedCountries.includes(
     playerCountry,
+  ) &&
+  !unblockedRegions.includes(
+    playerRegion,
   )
 ) {
   return {
@@ -370,9 +367,22 @@ if (
       'PLATFORM_GEOIP_BLOCK',
 
     recommendation:
-      `${playerCountry} is blocked by default platform GeoIP restrictions.`,
+      `${playerCountry}/${playerRegion} is blocked by default platform GeoIP restrictions.`,
   };
 }
+if (
+  accessibleJurisdictions.length > 0 &&
+  !explicitlyAllowed
+) {
+  return {
+    category:
+      'ACCESSIBLE_JURISDICTION_BLOCK',
+
+    recommendation:
+      'Player jurisdiction is not present in accessible/unblocked settings.',
+  };
+}
+
   return {
     category:
       'UNKNOWN_521',
@@ -381,6 +391,10 @@ if (
       'No blocking condition was identified in platform configuration. Please contact the Platform team for further RCA',
   };
 }
+
+
+
+
   // =====================================================
   // PLATFORM ENABLED GAMES
   // =====================================================
@@ -903,33 +917,76 @@ msg.includes('Impl not found') ||
   const isConfigIssue =
     Boolean(configErrorLog);
 
-    let prohibitedJurisdictionLog = null;
+    let prohibitedJurisdictionLogs: any[] = [];
 
 if (!isConfigIssue) {
-  prohibitedJurisdictionLog =
-    logsToCheck.find((log: any) => {
-      
-const msg =
-  [
-    log?.message
-  ]
-    .filter(Boolean)
-    .join(' ');
+  prohibitedJurisdictionLogs =
+    logsToCheck.filter((log: any) => {
+      const msg = [
+        log?.message,
+        log?.responseLog,
+        log?.error,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-return (
-  msg.includes(
-    'Prohibited Jurisdictions',
-  ) ||
-  msg.includes(
-    'You are not allowed to play Live Dealer',
-  )
-);
-});
+      return (
+        msg.includes(
+          'Prohibited Jurisdictions',
+        ) ||
+        msg.includes(
+          'You are not allowed to play Live Dealer',
+        ) 
+      );
+    });
 }
+
 const isProhibitedJurisdiction =
-  Boolean(
-    prohibitedJurisdictionLog,
-  );
+  prohibitedJurisdictionLogs.length > 0;
+
+  const prohibitedMessages = Array.from(
+  new Map(
+    prohibitedJurisdictionLogs.map(
+      (log: any) => {
+        const text = [
+          log?.message,
+          log?.requestLog,
+          log?.responseLog,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        const operatorGameId =
+          text.match(/gameid=(\d+)/i)?.[1] ||
+          parsed.symbol;
+
+        const table =
+          tableFamily.find(
+            (x: any) =>
+              x.operator_game_id ===
+              operatorGameId,
+          ) || tableConfig;
+
+        return [
+          operatorGameId,
+          {
+            operator_game_id:
+              operatorGameId,
+
+            table_id:
+              table?.table_id || null,
+
+            table_name:
+              table?.table_name || null,
+
+            message:
+              log?.message,
+          },
+        ];
+      },
+    ),
+  ).values(),
+);
     
 // ✅ STEP: IF CONFIG ISSUE → RETURN EARLY ✅
   
@@ -1036,7 +1093,7 @@ console.log(
 );
 
 let platformConfig = null;
-let platformConfigDebug = null;
+let platformConfigDebug: any[] = [];
 
 if (
   has521 &&
@@ -1099,93 +1156,132 @@ const regionSettings =
   matchedCasinoConfig?.configuration
     ?.regionSettings;
 
-    const authLog =
-  lcLogs.find((log: any) => {
+const authLogs =
+  lcLogs.filter((log: any) => {
     const text = [
       log?.message,
       log?.requestLog,
       log?.responseLog,
+      log?.error,
     ]
       .filter(Boolean)
       .join(' ');
 
-    return text.includes(
-      '/RGSGateway/UserAPI/',
+    return (
+      text.includes(
+        '/RGSGateway/UserAPI/',
+      ) &&
+      (
+        text.includes('"error":521') ||
+        text.includes(
+          'Unsupported jurisdiction',
+        )
+      )
     );
-  }) || null;
+  });
 
-const authText = [
-  authLog?.message,
-  authLog?.requestLog,
-  authLog?.responseLog,
-]
-  .filter(Boolean)
-  .join(' ');
-  const gameId =
-  authText.match(/"ppGame":"([^"]+)"/)?.[1] ||
+const uniqueFailures = Array.from(
+  new Map(
+    authLogs.map((authLog: any) => {
+      const authText = [
+        authLog?.message,
+        authLog?.requestLog,
+        authLog?.responseLog,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+   const gameId =
   authText.match(/"gameID":"([^"]+)"/)?.[1] ||
   authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
   '';
 
-const playerIp =
-  authText.match(
-    /"ipAddress":"([^"]+)"/,
-  )?.[1] || '';
+      const playerIp =
+        authText.match(
+          /"ipAddress":"([^"]+)"/,
+        )?.[1] || '';
 
-const playerCountry =
-  authText.match(
-    /"ipCountry":"([^"]+)"/,
-  )?.[1] || '';
+      const playerCountry =
+        authText.match(
+          /"ipCountry":"([^"]+)"/,
+        )?.[1] || '';
 
-const playerRegion =
-  authText.match(
-    /"ipRegion":"([^"]+)"/,
-  )?.[1] || '';
+      const playerRegion =
+        authText.match(
+          /"ipRegion":"([^"]+)"/,
+        )?.[1] || '';
 
+      const sessionId =
+        authLog?.contextMap?.uuid || '';
+
+      return [
+        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}`,
+        {
+          gameId,
+          playerIp,
+          playerCountry,
+          playerRegion,
+          sessionId,
+        },
+      ];
+    }),
+  ).values(),
+);
+
+for (const failure of uniqueFailures as any[]) {
   const analysis =
-  this.analyze521(
-    playerCountry,
-    playerRegion,
-    jurisdictionSettings,
-    countrySettings,
-    regionSettings,
-  );
+    this.analyze521(
+      failure.playerCountry,
+      failure.playerRegion,
+      jurisdictionSettings,
+      countrySettings,
+      regionSettings,
+    );
 
+  platformConfigDebug.push({
+    operator_game_id:
+      failure.gameId,
 
- platformConfigDebug = {
-  gameId,
-  playerIp,
-  playerCountry,
-  playerRegion,
+    playerIp:
+      failure.playerIp,
 
-  casinoJurisdiction:
-    jurisdictionSettings?.casinoJurisdiction,
+    playerCountry:
+      failure.playerCountry,
 
-  jurisdictionPriority:
-    jurisdictionSettings?.jurisdictionPriority,
+    playerRegion:
+      failure.playerRegion,
 
-  accessibleJurisdictions:
-    jurisdictionSettings?.accessibleJurisdictions,
+    sessionId:
+      failure.sessionId,
 
-  blockedCountries:
-    countrySettings?.casinoBlockedCountries,
+    casinoJurisdiction:
+      jurisdictionSettings?.casinoJurisdiction,
 
-  unblockedCountries:
-    countrySettings?.unblockedCountries,
+    jurisdictionPriority:
+      jurisdictionSettings?.jurisdictionPriority,
 
-  blockedRegions:
-    regionSettings?.casinoBlockedRegions,
+    accessibleJurisdictions:
+      jurisdictionSettings?.accessibleJurisdictions,
 
-  unblockedRegions:
-    regionSettings?.unblockedRegions,
+    blockedCountries:
+      countrySettings?.casinoBlockedCountries,
 
-  category:
-    analysis.category,
+    unblockedCountries:
+      countrySettings?.unblockedCountries,
 
-  recommendation:
-    analysis.recommendation,
-};
+    blockedRegions:
+      regionSettings?.casinoBlockedRegions,
 
+    unblockedRegions:
+      regionSettings?.unblockedRegions,
+
+    category:
+      analysis.category,
+
+    recommendation:
+      analysis.recommendation,
+  });
+}
 
 console.log(
   'JURISDICTION SETTINGS:',
@@ -1334,10 +1430,7 @@ issue_type:
       : null,
   
 prohibited_message:
-  isProhibitedJurisdiction
-    ? prohibitedJurisdictionLog?.message
-    : null,
-
+  prohibitedMessages,
 
   duration: {
     from,
@@ -1490,6 +1583,36 @@ console.log(
       ? uuidLogs
       : fullLogs;
 
+const uuidGameMap = new Map<
+  string,
+  string
+>();
+
+for (const log of logsToCheck) {
+  const text = [
+    log?.message,
+    log?.requestLog,
+    log?.responseLog,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+const gameId =
+  text.match(/gameid=(\d+)/i)?.[1] ||
+  text.match(/"gameID":"([^"]+)"/)?.[1] ||
+  text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+
+  const uuid =
+    log?.contextMap?.uuid ||
+    log?.contextMap?.['uuid:'];
+
+  if (uuid && gameId) {
+    uuidGameMap.set(
+      uuid,
+      gameId,
+    );
+  }
+}
   const configErrorLog =
     logsToCheck.find((log: any) => {
       const msg =
@@ -1517,37 +1640,34 @@ console.log(
     'CONFIG ISSUE:',
     isConfigIssue,
   );
+let prohibitedJurisdictionLogs: any[] = [];
 
-  let prohibitedJurisdictionLog =
-    null;
+if (!isConfigIssue) {
+  prohibitedJurisdictionLogs =
+    logsToCheck.filter((log: any) => {
+      const msg = [
+        log?.message,
+        log?.responseLog,
+        log?.error,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-  if (!isConfigIssue) {
-    prohibitedJurisdictionLog =
-      logsToCheck.find(
-        (log: any) => {
-          const msg = [
-            log?.message,
-            log?.error,
-          ]
-            .filter(Boolean)
-            .join(' ');
-
-          return (
-            msg.includes(
-              'Prohibited Jurisdictions',
-            ) ||
-            msg.includes(
-              'You are not allowed to play Live Dealer',
-            )
-          );
-        },
+      return (
+        msg.includes(
+          'Prohibited Jurisdictions',
+        ) ||
+        msg.includes(
+          'You are not allowed to play Live Dealer',
+        ) 
       );
-  }
+    });
+}
 
-  const isProhibitedJurisdiction =
-    Boolean(
-      prohibitedJurisdictionLog,
-    );
+const isProhibitedJurisdiction =
+  prohibitedJurisdictionLogs.length > 0;
+
+
 
   console.log(
     'PROHIBITED JURISDICTION:',
@@ -1565,14 +1685,11 @@ const uniqueGameIds = [
           .filter(Boolean)
           .join(' ');
 
-        return (
-          text.match(
-            /"gameID":"([^"]+)"/,
-          )?.[1] ||
-          text.match(
-            /"operatorGameId":"([^"]+)"/,
-          )?.[1]
-        );
+return (
+  text.match(/"gameID":"([^"]+)"/)?.[1] ||
+  text.match(/"operatorGameId":"([^"]+)"/)?.[1]
+);
+
       })
       .filter(Boolean),
   ),
@@ -1649,6 +1766,102 @@ console.log(
 console.log(
   'TABLE FAMILIES =>',
   JSON.stringify(tableFamilies, null, 2),
+);
+
+const missingGameIds = (
+  uniqueGameIds as string[]
+).filter((gameId) => {
+  const existsInConfig =
+    tableConfigs.some(
+      (x: any) =>
+        `${x.operator_game_id}` ===
+        `${gameId}`,
+    );
+
+  return !existsInConfig;
+});
+
+console.log(
+  'MISSING GAME IDS:',
+  missingGameIds,
+);
+if (missingGameIds.length > 0) {
+  const fallbackResponse =
+    await this.repository.getDistinctTableConfig(
+      missingGameIds,
+    );
+
+ const fallbackConfigs: any[] =
+  fallbackResponse?.recordset ||
+  [];
+
+  for (const row of fallbackConfigs) {
+    if (
+      !tableConfigs.some(
+        (x: any) =>
+          `${x.operator_game_id}` ===
+          `${row.operator_game_id}`,
+      )
+    ) {
+      tableConfigs.push(row);
+    }
+  }
+}
+
+
+const prohibitedMessages = Array.from(
+  new Map(
+    prohibitedJurisdictionLogs.map(
+      (log: any) => {
+        const text = [
+          log?.message,
+          log?.requestLog,
+          log?.responseLog,
+        ]
+          .filter(Boolean)
+          .join(' ');
+const uuid =
+  log?.contextMap?.uuid ||
+  log?.contextMap?.['uuid:'];
+
+const operatorGameId =
+  text.match(/gameid=(\d+)/i)?.[1] ||
+  text.match(/"gameID":"([^"]+)"/)?.[1] ||
+  text.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+  uuidGameMap.get(uuid) ||
+  '';
+
+     const table =
+  tableConfigs.find(
+    (x: any) =>
+      `${x.operator_game_id}` ===
+      `${operatorGameId}`,
+  ) ||
+  tableFamilies.find(
+    (x: any) =>
+      `${x.operator_game_id}` ===
+      `${operatorGameId}`,
+  );
+
+        return [
+          operatorGameId,
+          {
+            operator_game_id:
+              operatorGameId,
+
+            table_id:
+              table?.table_id || null,
+
+            table_name:
+              table?.table_name || null,
+
+            message:
+              log?.message,
+          },
+        ];
+      },
+    ),
+  ).values(),
 );
 
 const configMap = new Map(
@@ -1760,7 +1973,7 @@ console.log(
   has521,
 );
 let platformConfig = null;
-let platformConfigDebug = null;
+let platformConfigDebug: any[] = [];
 
 if (
   has521 &&
@@ -1822,99 +2035,142 @@ const regionSettings =
   matchedCasinoConfig?.configuration
     ?.regionSettings;
 
-const authLog =
-  lcLogs.find((log: any) => {
+const authLogs =
+  lcLogs.filter((log: any) => {
     const text = [
       log?.message,
       log?.requestLog,
       log?.responseLog,
+      log?.error,
     ]
       .filter(Boolean)
       .join(' ');
 
-    return text.includes(
-      '/RGSGateway/UserAPI/',
+    return (
+      text.includes(
+        '/RGSGateway/UserAPI/',
+      ) &&
+      (
+        text.includes('"error":521') ||
+        text.includes(
+          'Unsupported jurisdiction',
+        )
+      )
     );
-  }) || null;
+  });
 
-const authText = [
-  authLog?.message,
-  authLog?.requestLog,
-  authLog?.responseLog,
-]
-  .filter(Boolean)
-  .join(' ');
+const uniqueFailures = Array.from(
+  new Map(
+    authLogs.map((authLog: any) => {
+      const authText = [
+        authLog?.message,
+        authLog?.requestLog,
+        authLog?.responseLog,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-  const gameId =
-  authText.match(/"ppGame":"([^"]+)"/)?.[1] ||
+    const gameId =
   authText.match(/"gameID":"([^"]+)"/)?.[1] ||
   authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
   '';
 
-  const playerIp =
-  authText.match(
-    /"ipAddress":"([^"]+)"/,
-  )?.[1] || '';
+      const playerIp =
+        authText.match(
+          /"ipAddress":"([^"]+)"/,
+        )?.[1] || '';
 
-const playerCountry =
-  authText.match(
-    /"ipCountry":"([^"]+)"/,
-  )?.[1] || '';
+      const playerCountry =
+        authText.match(
+          /"ipCountry":"([^"]+)"/,
+        )?.[1] || '';
 
-const playerRegion =
-  authText.match(
-    /"ipRegion":"([^"]+)"/,
-  )?.[1] || '';
+      const playerRegion =
+        authText.match(
+          /"ipRegion":"([^"]+)"/,
+        )?.[1] || '';
 
-  console.log({
-  playerIp,
-  playerCountry,
-  playerRegion,
-});
+      const sessionId =
+        authLog?.contextMap?.uuid || '';
 
+      return [
+        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}`,
+        {
+          gameId,
+          playerIp,
+          playerCountry,
+          playerRegion,
+          sessionId,
+        },
+      ];
+    }),
+  ).values(),
+);
+
+console.log(
+  'AUTH LOGS COUNT:',
+  authLogs.length,
+);
+
+console.log(
+  'UNIQUE 521 FAILURES:',
+  uniqueFailures.length,
+);
+
+for (const failure of uniqueFailures as any[]) {
   const analysis =
-  this.analyze521(
-    playerCountry,
-    playerRegion,
-    jurisdictionSettings,
-    countrySettings,
-    regionSettings,
-  );
+    this.analyze521(
+      failure.playerCountry,
+      failure.playerRegion,
+      jurisdictionSettings,
+      countrySettings,
+      regionSettings,
+    );
 
-   platformConfigDebug = {
-    gameId,
-    playerIp,
-  playerCountry,
-  playerRegion,
+  platformConfigDebug.push({
+    operator_game_id:
+      failure.gameId,
 
-  casinoJurisdiction:
-    jurisdictionSettings?.casinoJurisdiction,
+    playerIp:
+      failure.playerIp,
 
-  jurisdictionPriority:
-    jurisdictionSettings?.jurisdictionPriority,
+    playerCountry:
+      failure.playerCountry,
 
-  accessibleJurisdictions:
-    jurisdictionSettings?.accessibleJurisdictions,
+    playerRegion:
+      failure.playerRegion,
 
-  blockedCountries:
-    countrySettings?.casinoBlockedCountries,
+    sessionId:
+      failure.sessionId,
 
-  unblockedCountries:
-    countrySettings?.unblockedCountries,
+    casinoJurisdiction:
+      jurisdictionSettings?.casinoJurisdiction,
 
-  blockedRegions:
-    regionSettings?.casinoBlockedRegions,
+    jurisdictionPriority:
+      jurisdictionSettings?.jurisdictionPriority,
 
-  unblockedRegions:
-    regionSettings?.unblockedRegions,
+    accessibleJurisdictions:
+      jurisdictionSettings?.accessibleJurisdictions,
 
-  category:
-    analysis.category,
+    blockedCountries:
+      countrySettings?.casinoBlockedCountries,
 
-  recommendation:
-    analysis.recommendation,
-};
+    unblockedCountries:
+      countrySettings?.unblockedCountries,
 
+    blockedRegions:
+      regionSettings?.casinoBlockedRegions,
+
+    unblockedRegions:
+      regionSettings?.unblockedRegions,
+
+    category:
+      analysis.category,
+
+    recommendation:
+      analysis.recommendation,
+  });
+}
 
 console.log(
   'JURISDICTION SETTINGS:',
@@ -1964,9 +2220,14 @@ for (const gameId of uniqueGameIds as string[]) {
     String(gameId),
   ) || null;
 
+const baseFamily =
+  String(gameId)
+    .match(/^\d+/)?.[0] ||
+  String(gameId);
+
 const tableFamily =
   familyMap.get(
-    String(gameId),
+    baseFamily,
   ) || [];
 
     const result =
@@ -2078,10 +2339,8 @@ const tableFamily =
         ? configErrorLog?.message
         : null,
 
-    prohibited_message:
-      isProhibitedJurisdiction
-        ? prohibitedJurisdictionLog?.message
-        : null,
+   prohibited_message:
+  prohibitedMessages,
 
     duration: {
       from,
@@ -2183,12 +2442,10 @@ table_info: [
 
     operator_game_id: baseFamily,
 
-    table_name:
-      tableFamily.find(
-        (table: any) =>
-          table.operator_game_id ===
-          baseFamily,
-      )?.table_name || null,
+  table_name:
+  tableConfig?.table_name ||
+  tableFamily?.[0]?.table_name ||
+  null,
 
     platform_enabled:
       games.some(

@@ -175,7 +175,7 @@ for (
   let timeout = 7000;
 
   if (attempt === 4) {
-    timeout = 15000;
+    timeout = 45000;
   }
 
   try {
@@ -307,6 +307,30 @@ WHERE operator_game_id = @OperatorGameId
       `,
     );
   }
+  //Falback for missing tablename//
+async getDistinctTableConfig(
+  operatorGameIds: string[],
+) {
+  const dbenv = process.env.DBENV;
+
+  const gameIds = operatorGameIds
+    .map((x) => `'${x}'`)
+    .join(',');
+return this.database.query(
+  (request) => {
+    return request;
+  },
+  `SELECT DISTINCT
+    operator_game_id,
+    table_name,
+    table_id
+FROM ${dbenv}.tableconfig WITH (NOLOCK)
+WHERE operator_game_id IN (${gameIds})
+ORDER BY operator_game_id
+  `,
+);
+}
+
 //To get All Chroma//
 async getTableFamily(operatorGameId: string) {
   const dbenv = process.env.DBENV;
@@ -369,10 +393,13 @@ async getTableFamilies(
     (request) => {
       operatorGameIds.forEach(
         (id, index) => {
+          const familyId =
+            id.match(/^\d+/)?.[0] || id;
+
           request.input(
             `id${index}`,
             sql.VarChar(50),
-            `${id}%`,
+            `${familyId}%`,
           );
         },
       );
