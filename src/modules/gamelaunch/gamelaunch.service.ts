@@ -102,6 +102,19 @@ private isLobbyGame(gameName?: string): boolean {
   );
 }
 
+private extractErrorCodeFromText(
+  text: string,
+): number | null {
+  const match =
+    text.match(/"error"\s*:\s*(\d+)/) ||
+    text.match(/\berror\s*[:=]\s*(\d+)/i);
+
+  return match
+    ? Number(match[1])
+    : null;
+}
+
+
 private has521Error(
   logs: any[],
 ): boolean {
@@ -899,134 +912,142 @@ if (
   ];
 }
 
-  const configErrorLog =
-    logsToCheck.find((log: any) => {
-      const msg =
-        log?.message ||
-        log?.error ||
-        JSON.stringify(log);
+const configErrorLogs =
+  logsToCheck.filter((log: any) => {
+    const msg =
+      log?.message ||
+      log?.error ||
+      JSON.stringify(log);
 
-      return (
-       
-msg.includes('Impl not found') ||
-  msg.includes('Missing Impl for casino') ||
-  msg.includes('Operator OWC is not correct')
-      );
-    });
+    return (
+      msg.includes('Impl not found') ||
+      msg.includes('Missing Impl for casino') ||
+      msg.includes('Operator OWC is not correct')
+    );
+  });
 
-  const isConfigIssue =
-    Boolean(configErrorLog);
+const isConfigIssue =
+  configErrorLogs.length > 0;
 
-    let prohibitedJurisdictionLogs: any[] = [];
 
-if (!isConfigIssue) {
-  prohibitedJurisdictionLogs =
-    logsToCheck.filter((log: any) => {
-      const msg = [
-        log?.message,
-        log?.responseLog,
-        log?.error,
-      ]
-        .filter(Boolean)
-        .join(' ');
+  const configErrors =
+  configErrorLogs.map((log: any) => ({
+    timestamp:
+      log?.['@timestamp'] || '',
 
-      return (
-        msg.includes(
-          'Prohibited Jurisdictions',
-        ) ||
-        msg.includes(
-          'You are not allowed to play Live Dealer',
-        ) 
-      );
-    });
-}
+    message:
+      log?.message ||
+      log?.error ||
+      '',
+  }));
 
-const isProhibitedJurisdiction =
-  prohibitedJurisdictionLogs.length > 0;
+  let fullLogs: any[] = [];
 
-  const prohibitedMessages = Array.from(
-  new Map(
-    prohibitedJurisdictionLogs.map(
-      (log: any) => {
-        const text = [
-          log?.message,
-          log?.requestLog,
-          log?.responseLog,
-        ]
-          .filter(Boolean)
-          .join(' ');
+fullLogs =
+  await this.repository.searchAllLogsByToken({
+    token: token || '',
+    from,
+    to,
+  });
 
-        const operatorGameId =
-          text.match(/gameid=(\d+)/i)?.[1] ||
-          parsed.symbol;
-
-        const table =
-          tableFamily.find(
-            (x: any) =>
-              x.operator_game_id ===
-              operatorGameId,
-          ) || tableConfig;
-
-        return [
-          operatorGameId,
-          {
-            operator_game_id:
-              operatorGameId,
-
-            table_id:
-              table?.table_id || null,
-
-            table_name:
-              table?.table_name || null,
-
-            message:
-              log?.message,
-          },
-        ];
-      },
-    ),
-  ).values(),
-);
-    
-// ✅ STEP: IF CONFIG ISSUE → RETURN EARLY ✅
-  
 console.log(
-  'CONFIG ISSUE DETECTED:',
-  isConfigIssue,
+  'FULL TOKEN LOGS:',
+  fullLogs.length,
 );
 
-// STEP: NO CONFIG → FETCH FULL LOGS ✅
-let fullLogs: any[] = [];
-
-if (!isConfigIssue) {
-  fullLogs =
-    await this.repository.searchAllLogsByToken({
-      token: token || '',
-      from,
-      to,
-    });
-
-  console.log(
-    'FULL TOKEN LOGS:',
-    fullLogs.length,
-  );
-
-  console.log(
+console.log(
   'FIRST LOG CASINO ID:',
   fullLogs[0]?.contextMap?.casinoId,
 );
 
-const matchedCasinoId =
+const matchedCasinoIdFromFullLogs =
   fullLogs.find(
     (x: any) =>
       x?.contextMap?.casinoId,
   )?.contextMap?.casinoId || null;
 
 console.log(
-  'MATCHED CASINO ID:',
-  matchedCasinoId,
+  'MATCHED CASINO ID FROM FULL LOGS:',
+  matchedCasinoIdFromFullLogs,
 );
-}
+
+let prohibitedJurisdictionLogs: any[] = [];
+prohibitedJurisdictionLogs =
+  logsToCheck.filter((log: any) => {
+    const msg = [
+      log?.message,
+      log?.requestLog,
+      log?.responseLog,
+      log?.error,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const errorCode =
+      this.extractErrorCodeFromText(
+        msg,
+      );
+
+    const uuid =
+      log?.contextMap?.uuid ||
+      log?.contextMap?.['uuid:'] ||
+      '';
+
+    const hasError0InSameSession =
+      errorCode === 0 ||
+      logsToCheck.some((x: any) => {
+        const otherUuid =
+          x?.contextMap?.uuid ||
+          x?.contextMap?.['uuid:'] ||
+          '';
+
+        if (
+          uuid &&
+          otherUuid &&
+          uuid !== otherUuid
+        ) {
+          return false;
+        }
+
+        const otherText = [
+          x?.message,
+          x?.requestLog,
+          x?.responseLog,
+          x?.error,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return (
+          this.extractErrorCodeFromText(
+            otherText,
+          ) === 0
+        );
+      });
+
+    const hasLcBlockMessage =
+      msg.includes(
+        'Prohibited Jurisdictions',
+      ) ||
+      msg.includes(
+        'You are not allowed to play Live Dealer',
+      ) ||
+      msg.includes(
+        'Auth error jurisdiction',
+      ) ||
+      msg.includes(
+        'IP is not allowed for blocked country',
+      );
+
+    return (
+      hasError0InSameSession &&
+      hasLcBlockMessage
+    );
+  });
+console.log(
+  'CONFIG ISSUE DETECTED:',
+  isConfigIssue,
+);
 
   // =====================================================
   // ✅ CASINO MATCHING (UNCHANGED)
@@ -1034,31 +1055,44 @@ console.log(
 // =====================================================
 // ✅ FINAL DECISION FLOW (FIXED ✅)
 // =====================================================
-
 const hasLogs =
   (uuidLogs && uuidLogs.length > 0) ||
-  (rawLogs && rawLogs.length > 0);
+  (rawLogs && rawLogs.length > 0) ||
+  (fullLogs && fullLogs.length > 0);
 
 const singleCasino = casinos.length === 1;
+
+const effectiveMatchedCasinoId =
+  matchedCasinoIdFromFullLogs ||
+  matchedCasinoId;
 
 // ✅ MULTIPLE CASINOS + LOGS → FILTER
 if (
   !singleCasino &&
   hasLogs &&
-  matchedCasinoId
+  effectiveMatchedCasinoId
 ) {
   casinos = casinos.filter(
     (x: any) =>
       `${x.casino_id}` ===
-      `${matchedCasinoId}`,
+      `${effectiveMatchedCasinoId}`,
   );
 }
+
 // ✅ MULTIPLE + NO LOGS → DO NOTHING ✅
 // ✅ SINGLE CASINO → DO NOTHING ✅
-const responseLogs =
-  isConfigIssue
-    ? logsToCheck
-    : fullLogs;
+const responseLogs = Array.from(
+  new Map(
+    [
+      ...logsToCheck,
+      ...fullLogs,
+    ].map((log: any) => [
+      log?._id ||
+        `${log?.['@timestamp']}_${log?.message}`,
+      log,
+    ]),
+  ).values(),
+);
 
 const platformLogs =
   responseLogs.filter(
@@ -1077,7 +1111,6 @@ const lcLogs =
   );
 
 const has521 =
-  !isConfigIssue &&
   this.has521Error(
     lcLogs,
   );
@@ -1093,7 +1126,127 @@ console.log(
 );
 
 let platformConfig = null;
-let platformConfigDebug: any[] = [];
+
+const platformConfigInfo = {
+  casinoJurisdiction: '',
+  jurisdictionPriority: '',
+  accessibleJurisdictions: '',
+  casinoBlockedCountries: '',
+  unblockedCountries: '',
+  casinoBlockedRegions: '',
+  unblockedRegions: '',
+};
+const tableConfigEventMap =
+new Map<string, any[]>();
+for (const log of prohibitedJurisdictionLogs) {
+  const text = [
+    log?.message,
+    log?.requestLog,
+    log?.responseLog,
+    log?.error,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const sessionId =
+    log?.contextMap?.uuid ||
+    log?.contextMap?.['uuid:'] ||
+    '';
+
+  const relatedLogs =
+    logsToCheck.filter((x: any) => {
+      const otherSessionId =
+        x?.contextMap?.uuid ||
+        x?.contextMap?.['uuid:'] ||
+        '';
+
+      return (
+        sessionId &&
+        otherSessionId === sessionId
+      );
+    });
+
+  const relatedText =
+    [
+      text,
+      ...relatedLogs.map((x: any) =>
+        [
+          x?.message,
+          x?.requestLog,
+          x?.responseLog,
+          x?.error,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      ),
+    ].join(' ');
+
+  const operatorGameId =
+    relatedText.match(/gameid=(\d+)/i)?.[1] ||
+    relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
+    relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+    parsed.symbol;
+
+  const playerIp =
+    relatedText.match(
+      /"ipAddress":"([^"]+)"/,
+    )?.[1] || '';
+
+  const playerCountry =
+    relatedText.match(
+      /"ipCountry":"([^"]+)"/,
+    )?.[1] || '';
+
+  const playerRegion =
+    relatedText.match(
+      /"ipRegion":"([^"]+)"/,
+    )?.[1] || '';
+
+  const prohibitedMessage =
+    relatedText.includes(
+      'IP is not allowed for blocked country',
+    )
+      ? 'IP is not allowed for blocked country'
+      : relatedText.includes(
+          'Auth error jurisdiction',
+        )
+        ? 'Auth error jurisdiction'
+        : log?.message ||
+          'You are not allowed to play Live Dealer';
+
+  this.pushTableConfigEvent(
+    tableConfigEventMap,
+    operatorGameId,
+    {
+      timestamp:
+        log?.['@timestamp'] || '',
+
+      player_ip:
+        playerIp,
+
+      player_country:
+        playerCountry,
+
+      player_region:
+        playerRegion,
+
+      session_id:
+        sessionId,
+
+      lc_level_block:
+        true,
+
+      block_level:
+        'LC',
+
+      recommendation:
+        'Player is blocked at LC level due to prohibited jurisdiction.',
+
+      prohibited_message:
+        prohibitedMessage,
+    },
+  );
+}
 
 if (
   has521 &&
@@ -1156,6 +1309,34 @@ const regionSettings =
   matchedCasinoConfig?.configuration
     ?.regionSettings;
 
+platformConfigInfo.casinoJurisdiction =
+  jurisdictionSettings?.casinoJurisdiction ||
+  '';
+
+platformConfigInfo.jurisdictionPriority =
+  jurisdictionSettings?.jurisdictionPriority ||
+  '';
+
+platformConfigInfo.accessibleJurisdictions =
+  jurisdictionSettings?.accessibleJurisdictions ||
+  '';
+
+platformConfigInfo.casinoBlockedCountries =
+  countrySettings?.casinoBlockedCountries ||
+  '';
+
+platformConfigInfo.unblockedCountries =
+  countrySettings?.unblockedCountries ||
+  '';
+
+platformConfigInfo.casinoBlockedRegions =
+  regionSettings?.casinoBlockedRegions ||
+  '';
+
+platformConfigInfo.unblockedRegions =
+  regionSettings?.unblockedRegions ||
+  '';
+
 const authLogs =
   lcLogs.filter((log: any) => {
     const text = [
@@ -1167,19 +1348,21 @@ const authLogs =
       .filter(Boolean)
       .join(' ');
 
+    const errorCode =
+      this.extractErrorCodeFromText(
+        text,
+      );
+
     return (
       text.includes(
         '/RGSGateway/UserAPI/',
       ) &&
-      (
-        text.includes('"error":521') ||
-        text.includes(
-          'Unsupported jurisdiction',
-        )
+      errorCode === 521 &&
+      text.includes(
+        'Unsupported jurisdiction',
       )
     );
   });
-
 const uniqueFailures = Array.from(
   new Map(
     authLogs.map((authLog: any) => {
@@ -1187,14 +1370,16 @@ const uniqueFailures = Array.from(
         authLog?.message,
         authLog?.requestLog,
         authLog?.responseLog,
+        authLog?.error,
       ]
         .filter(Boolean)
         .join(' ');
 
-   const gameId =
-  authText.match(/"gameID":"([^"]+)"/)?.[1] ||
-  authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-  '';
+      const gameId =
+        authText.match(/"gameID":"([^"]+)"/)?.[1] ||
+        authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+        parsed.symbol ||
+        '';
 
       const playerIp =
         authText.match(
@@ -1212,16 +1397,30 @@ const uniqueFailures = Array.from(
         )?.[1] || '';
 
       const sessionId =
-        authLog?.contextMap?.uuid || '';
+        authLog?.contextMap?.uuid ||
+        authLog?.contextMap?.['uuid:'] ||
+        '';
+
+      const timestamp =
+        authLog?.['@timestamp'] || '';
+
+      const prohibitedMessage =
+        authText.includes(
+          'Unsupported jurisdiction',
+        )
+          ? '521 : Unsupported jurisdiction'
+          : '521 : Unsupported jurisdiction';
 
       return [
-        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}`,
+        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
         {
           gameId,
           playerIp,
           playerCountry,
           playerRegion,
           sessionId,
+          timestamp,
+          prohibitedMessage,
         },
       ];
     }),
@@ -1238,49 +1437,39 @@ for (const failure of uniqueFailures as any[]) {
       regionSettings,
     );
 
-  platformConfigDebug.push({
-    operator_game_id:
-      failure.gameId,
+    this.pushTableConfigEvent(
+    tableConfigEventMap,
+    failure.gameId,
+    {
+      timestamp:
+        failure.timestamp,
 
-    playerIp:
-      failure.playerIp,
+      player_ip:
+        failure.playerIp,
 
-    playerCountry:
-      failure.playerCountry,
+      player_country:
+        failure.playerCountry,
 
-    playerRegion:
-      failure.playerRegion,
+      player_region:
+        failure.playerRegion,
 
-    sessionId:
-      failure.sessionId,
+      session_id:
+        failure.sessionId,
 
-    casinoJurisdiction:
-      jurisdictionSettings?.casinoJurisdiction,
+      lc_level_block:
+        false,
 
-    jurisdictionPriority:
-      jurisdictionSettings?.jurisdictionPriority,
+      block_level:
+        'PLATFORM',
 
-    accessibleJurisdictions:
-      jurisdictionSettings?.accessibleJurisdictions,
+      recommendation:
+        analysis.recommendation,
 
-    blockedCountries:
-      countrySettings?.casinoBlockedCountries,
-
-    unblockedCountries:
-      countrySettings?.unblockedCountries,
-
-    blockedRegions:
-      regionSettings?.casinoBlockedRegions,
-
-    unblockedRegions:
-      regionSettings?.unblockedRegions,
-
-    category:
-      analysis.category,
-
-    recommendation:
-      analysis.recommendation,
-  });
+      prohibited_message:
+        failure.prohibitedMessage ||
+        '521 : Unsupported jurisdiction',
+    },
+  );
 }
 
 console.log(
@@ -1350,21 +1539,33 @@ const casinoPlatformLogs =
       casino.casino_id,
   );
 
-  casinoData.push({
-    casino_id:
-      result.casino_id,
+  const tableInfoWithConfig =
+  this.attachTableConfigEvents(
+    result.table_info,
+    tableConfigEventMap,
+  );
 
-    casino_desc:
-      result.casino_desc,
+casinoData.push({
+  casino_id:
+    result.casino_id,
 
-    env_name:
-      result.env_name,
+  casino_desc:
+    result.casino_desc,
 
-    casino_active_flag:
-      result.casino_active_flag,
+  env_name:
+    result.env_name,
 
-    table_info:
-      result.table_info,
+  casino_active_flag:
+    result.casino_active_flag,
+
+  config_error:
+    configErrors,
+
+  platform_config:
+    platformConfigInfo,
+
+  table_info:
+    tableInfoWithConfig,
 
     log_info: [
       {
@@ -1415,22 +1616,6 @@ const launchTable = [
 // THEN return
 return {
   success: true,
-  has521,
-  platformConfigDebug,
-issue_type:
-  isConfigIssue
-    ? 'CONFIG'
-    : isProhibitedJurisdiction
-    ? 'PROHIBITED_JURISDICTION'
-    : 'NORMAL',
-
-  config_error:
-    isConfigIssue
-      ? configErrorLog?.message
-      : null,
-  
-prohibited_message:
-  prohibitedMessages,
 
   duration: {
     from,
@@ -1438,9 +1623,6 @@ prohibited_message:
   },
 
   parsed,
-
-  launch_table:
-    launchTable,
 
   casinos:
     casinoData,
@@ -1613,66 +1795,118 @@ const gameId =
     );
   }
 }
-  const configErrorLog =
-    logsToCheck.find((log: any) => {
-      const msg =
-        log?.message ||
-        log?.error ||
-        JSON.stringify(log);
+const configErrorLogs =
+  logsToCheck.filter((log: any) => {
+    const msg =
+      log?.message ||
+      log?.error ||
+      JSON.stringify(log);
 
-      return (
-        msg.includes(
-          'Impl not found',
-        ) ||
-        msg.includes(
-          'Missing Impl for casino',
-        ) ||
-        msg.includes(
-          'Operator OWC is not correct',
-        )
-      );
-    });
+    return (
+      msg.includes(
+        'Impl not found',
+      ) ||
+      msg.includes(
+        'Missing Impl for casino',
+      ) ||
+      msg.includes(
+        'Operator OWC is not correct',
+      )
+    );
+  });
 
-  const isConfigIssue =
-    Boolean(configErrorLog);
+const isConfigIssue =
+  configErrorLogs.length > 0;
 
   console.log(
     'CONFIG ISSUE:',
     isConfigIssue,
   );
+
+const configErrors =
+  configErrorLogs.map((log: any) => ({
+    timestamp:
+      log?.['@timestamp'] || '',
+
+    message:
+      log?.message ||
+      log?.error ||
+      '',
+  }));
 let prohibitedJurisdictionLogs: any[] = [];
+prohibitedJurisdictionLogs =
+  logsToCheck.filter((log: any) => {
+    const msg = [
+      log?.message,
+      log?.requestLog,
+      log?.responseLog,
+      log?.error,
+    ]
+      .filter(Boolean)
+      .join(' ');
 
-if (!isConfigIssue) {
-  prohibitedJurisdictionLogs =
-    logsToCheck.filter((log: any) => {
-      const msg = [
-        log?.message,
-        log?.responseLog,
-        log?.error,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      return (
-        msg.includes(
-          'Prohibited Jurisdictions',
-        ) ||
-        msg.includes(
-          'You are not allowed to play Live Dealer',
-        ) 
+    const errorCode =
+      this.extractErrorCodeFromText(
+        msg,
       );
-    });
-}
 
-const isProhibitedJurisdiction =
-  prohibitedJurisdictionLogs.length > 0;
+    const uuid =
+      log?.contextMap?.uuid ||
+      log?.contextMap?.['uuid:'] ||
+      '';
 
+    const hasError0InSameSession =
+      errorCode === 0 ||
+      logsToCheck.some((x: any) => {
+        const otherUuid =
+          x?.contextMap?.uuid ||
+          x?.contextMap?.['uuid:'] ||
+          '';
 
+        if (
+          uuid &&
+          otherUuid &&
+          uuid !== otherUuid
+        ) {
+          return false;
+        }
 
-  console.log(
-    'PROHIBITED JURISDICTION:',
-    isProhibitedJurisdiction,
-  );
+        const otherText = [
+          x?.message,
+          x?.requestLog,
+          x?.responseLog,
+          x?.error,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return (
+          this.extractErrorCodeFromText(
+            otherText,
+          ) === 0
+        );
+      });
+
+    const hasLcBlockMessage =
+      msg.includes(
+        'Prohibited Jurisdictions',
+      ) ||
+      msg.includes(
+        'You are not allowed to play Live Dealer',
+      ) ||
+      msg.includes(
+        'Auth error jurisdiction',
+      ) ||
+      msg.includes(
+        'IP is not allowed for blocked country',
+      );
+
+    return (
+      hasError0InSameSession &&
+      hasLcBlockMessage
+    );
+  });
+
 const uniqueGameIds = [
   ...new Set(
     fullLogs
@@ -1809,61 +2043,6 @@ if (missingGameIds.length > 0) {
 }
 
 
-const prohibitedMessages = Array.from(
-  new Map(
-    prohibitedJurisdictionLogs.map(
-      (log: any) => {
-        const text = [
-          log?.message,
-          log?.requestLog,
-          log?.responseLog,
-        ]
-          .filter(Boolean)
-          .join(' ');
-const uuid =
-  log?.contextMap?.uuid ||
-  log?.contextMap?.['uuid:'];
-
-const operatorGameId =
-  text.match(/gameid=(\d+)/i)?.[1] ||
-  text.match(/"gameID":"([^"]+)"/)?.[1] ||
-  text.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-  uuidGameMap.get(uuid) ||
-  '';
-
-     const table =
-  tableConfigs.find(
-    (x: any) =>
-      `${x.operator_game_id}` ===
-      `${operatorGameId}`,
-  ) ||
-  tableFamilies.find(
-    (x: any) =>
-      `${x.operator_game_id}` ===
-      `${operatorGameId}`,
-  );
-
-        return [
-          operatorGameId,
-          {
-            operator_game_id:
-              operatorGameId,
-
-            table_id:
-              table?.table_id || null,
-
-            table_name:
-              table?.table_name || null,
-
-            message:
-              log?.message,
-          },
-        ];
-      },
-    ),
-  ).values(),
-);
-
 const configMap = new Map(
   tableConfigs.map(
     (x: any) => [
@@ -1934,10 +2113,18 @@ for (const gameId of uniqueGameIds as string[]) {
   });
 }
 
-const responseLogs =
-  isConfigIssue
-    ? logsToCheck
-    : fullLogs;
+const responseLogs = Array.from(
+  new Map(
+    [
+      ...logsToCheck,
+      ...fullLogs,
+    ].map((log: any) => [
+      log?._id ||
+        `${log?.['@timestamp']}_${log?.message}`,
+      log,
+    ]),
+  ).values(),
+);
 
 
   const platformLogs =
@@ -1957,7 +2144,6 @@ const responseLogs =
     );
 
 const has521 =
-  !isConfigIssue &&
   this.has521Error(
     lcLogs,
   );
@@ -1972,8 +2158,131 @@ console.log(
   'HAS 521:',
   has521,
 );
+
 let platformConfig = null;
-let platformConfigDebug: any[] = [];
+
+const platformConfigInfo = {
+  casinoJurisdiction: '',
+  jurisdictionPriority: '',
+  accessibleJurisdictions: '',
+  casinoBlockedCountries: '',
+  unblockedCountries: '',
+  casinoBlockedRegions: '',
+  unblockedRegions: '',
+};
+
+const tableConfigEventMap =
+  new Map<string, any[]>();
+ for (const log of prohibitedJurisdictionLogs) {
+  const text = [
+    log?.message,
+    log?.requestLog,
+    log?.responseLog,
+    log?.error,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const sessionId =
+    log?.contextMap?.uuid ||
+    log?.contextMap?.['uuid:'] ||
+    '';
+
+  const relatedLogs =
+    logsToCheck.filter((x: any) => {
+      const otherSessionId =
+        x?.contextMap?.uuid ||
+        x?.contextMap?.['uuid:'] ||
+        '';
+
+      return (
+        sessionId &&
+        otherSessionId === sessionId
+      );
+    });
+
+  const relatedText =
+    [
+      text,
+      ...relatedLogs.map((x: any) =>
+        [
+          x?.message,
+          x?.requestLog,
+          x?.responseLog,
+          x?.error,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      ),
+    ].join(' ');
+
+  const operatorGameId =
+    relatedText.match(/gameid=(\d+)/i)?.[1] ||
+    relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
+    relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+    uuidGameMap.get(sessionId) ||
+    '';
+
+  const playerIp =
+    relatedText.match(
+      /"ipAddress":"([^"]+)"/,
+    )?.[1] || '';
+
+  const playerCountry =
+    relatedText.match(
+      /"ipCountry":"([^"]+)"/,
+    )?.[1] || '';
+
+  const playerRegion =
+    relatedText.match(
+      /"ipRegion":"([^"]+)"/,
+    )?.[1] || '';
+
+  const prohibitedMessage =
+    relatedText.includes(
+      'IP is not allowed for blocked country',
+    )
+      ? 'IP is not allowed for blocked country'
+      : relatedText.includes(
+          'Auth error jurisdiction',
+        )
+        ? 'Auth error jurisdiction'
+        : log?.message ||
+          'You are not allowed to play Live Dealer';
+
+  this.pushTableConfigEvent(
+    tableConfigEventMap,
+    operatorGameId,
+    {
+      timestamp:
+        log?.['@timestamp'] || '',
+
+      player_ip:
+        playerIp,
+
+      player_country:
+        playerCountry,
+
+      player_region:
+        playerRegion,
+
+      session_id:
+        sessionId,
+
+      lc_level_block:
+        true,
+
+      block_level:
+        'LC',
+
+      recommendation:
+        'Player is blocked at LC level due to prohibited jurisdiction.',
+
+      prohibited_message:
+        prohibitedMessage,
+    },
+  );
+}
 
 if (
   has521 &&
@@ -2035,6 +2344,35 @@ const regionSettings =
   matchedCasinoConfig?.configuration
     ?.regionSettings;
 
+    
+platformConfigInfo.casinoJurisdiction =
+  jurisdictionSettings?.casinoJurisdiction ||
+  '';
+
+platformConfigInfo.jurisdictionPriority =
+  jurisdictionSettings?.jurisdictionPriority ||
+  '';
+
+platformConfigInfo.accessibleJurisdictions =
+  jurisdictionSettings?.accessibleJurisdictions ||
+  '';
+
+platformConfigInfo.casinoBlockedCountries =
+  countrySettings?.casinoBlockedCountries ||
+  '';
+
+platformConfigInfo.unblockedCountries =
+  countrySettings?.unblockedCountries ||
+  '';
+
+platformConfigInfo.casinoBlockedRegions =
+  regionSettings?.casinoBlockedRegions ||
+  '';
+
+platformConfigInfo.unblockedRegions =
+  regionSettings?.unblockedRegions ||
+  '';
+
 const authLogs =
   lcLogs.filter((log: any) => {
     const text = [
@@ -2046,19 +2384,21 @@ const authLogs =
       .filter(Boolean)
       .join(' ');
 
+    const errorCode =
+      this.extractErrorCodeFromText(
+        text,
+      );
+
     return (
       text.includes(
         '/RGSGateway/UserAPI/',
       ) &&
-      (
-        text.includes('"error":521') ||
-        text.includes(
-          'Unsupported jurisdiction',
-        )
+      errorCode === 521 &&
+      text.includes(
+        'Unsupported jurisdiction',
       )
     );
   });
-
 const uniqueFailures = Array.from(
   new Map(
     authLogs.map((authLog: any) => {
@@ -2066,14 +2406,21 @@ const uniqueFailures = Array.from(
         authLog?.message,
         authLog?.requestLog,
         authLog?.responseLog,
+        authLog?.error,
       ]
         .filter(Boolean)
         .join(' ');
 
-    const gameId =
-  authText.match(/"gameID":"([^"]+)"/)?.[1] ||
-  authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-  '';
+      const sessionId =
+        authLog?.contextMap?.uuid ||
+        authLog?.contextMap?.['uuid:'] ||
+        '';
+
+      const gameId =
+        authText.match(/"gameID":"([^"]+)"/)?.[1] ||
+        authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+        uuidGameMap.get(sessionId) ||
+        '';
 
       const playerIp =
         authText.match(
@@ -2090,17 +2437,26 @@ const uniqueFailures = Array.from(
           /"ipRegion":"([^"]+)"/,
         )?.[1] || '';
 
-      const sessionId =
-        authLog?.contextMap?.uuid || '';
+      const timestamp =
+        authLog?.['@timestamp'] || '';
+
+      const prohibitedMessage =
+        authText.includes(
+          'Unsupported jurisdiction',
+        )
+          ? '521 : Unsupported jurisdiction'
+          : '521 : Unsupported jurisdiction';
 
       return [
-        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}`,
+        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
         {
           gameId,
           playerIp,
           playerCountry,
           playerRegion,
           sessionId,
+          timestamp,
+          prohibitedMessage,
         },
       ];
     }),
@@ -2126,50 +2482,40 @@ for (const failure of uniqueFailures as any[]) {
       countrySettings,
       regionSettings,
     );
+  
+    this.pushTableConfigEvent(
+    tableConfigEventMap,
+    failure.gameId,
+    {
+      timestamp:
+        failure.timestamp,
 
-  platformConfigDebug.push({
-    operator_game_id:
-      failure.gameId,
+      player_ip:
+        failure.playerIp,
 
-    playerIp:
-      failure.playerIp,
+      player_country:
+        failure.playerCountry,
 
-    playerCountry:
-      failure.playerCountry,
+      player_region:
+        failure.playerRegion,
 
-    playerRegion:
-      failure.playerRegion,
+      session_id:
+        failure.sessionId,
 
-    sessionId:
-      failure.sessionId,
+      lc_level_block:
+        false,
 
-    casinoJurisdiction:
-      jurisdictionSettings?.casinoJurisdiction,
+      block_level:
+        'PLATFORM',
 
-    jurisdictionPriority:
-      jurisdictionSettings?.jurisdictionPriority,
+      recommendation:
+        analysis.recommendation,
 
-    accessibleJurisdictions:
-      jurisdictionSettings?.accessibleJurisdictions,
-
-    blockedCountries:
-      countrySettings?.casinoBlockedCountries,
-
-    unblockedCountries:
-      countrySettings?.unblockedCountries,
-
-    blockedRegions:
-      regionSettings?.casinoBlockedRegions,
-
-    unblockedRegions:
-      regionSettings?.unblockedRegions,
-
-    category:
-      analysis.category,
-
-    recommendation:
-      analysis.recommendation,
-  });
+      prohibited_message:
+        failure.prohibitedMessage ||
+        '521 : Unsupported jurisdiction',
+    },
+  );
 }
 
 console.log(
@@ -2265,6 +2611,12 @@ const tableFamily =
           ),
       );
 
+      const uniqueTableInfoWithConfig =
+  this.attachTableConfigEvents(
+    uniqueTableInfo,
+    tableConfigEventMap,
+  );
+
     const casinoPlatformLogs =
       platformLogs.filter(
         (log: any) =>
@@ -2295,9 +2647,14 @@ const tableFamily =
 
       casino_active_flag:
         casino.active_flag,
+   config_error:
+  configErrors,
 
-      table_info:
-        uniqueTableInfo,
+platform_config:
+  platformConfigInfo,
+
+table_info:
+  uniqueTableInfoWithConfig,
 
       log_info: [
         {
@@ -2322,45 +2679,25 @@ const tableFamily =
       ],
     });
   }
+return {
+  success: true,
 
-  return {
-    success: true,
-  has521,
-  platformConfigDebug,
-    issue_type:
-      isConfigIssue
-        ? 'CONFIG'
-        : isProhibitedJurisdiction
-        ? 'PROHIBITED_JURISDICTION'
-        : 'NORMAL',
+  duration: {
+    from,
+    to,
+  },
 
-    config_error:
-      isConfigIssue
-        ? configErrorLog?.message
-        : null,
+  parsed: {
+    type:
+      'SESSION_ANALYSIS',
 
-   prohibited_message:
-  prohibitedMessages,
+    token:
+      params.token,
+  },
 
-    duration: {
-      from,
-      to,
-    },
-
-    parsed: {
-      type:
-        'SESSION_ANALYSIS',
-
-      token:
-        params.token,
-    },
-
-    launch_table:
-      launchTable,
-
-    casinos:
-      casinoData,
-  };
+  casinos:
+    casinoData,
+};
 }
   // =====================================================
   // BUILD CASINO RESULT
@@ -2434,7 +2771,7 @@ console.log(
 
     casino_active_flag:
       casino.active_flag,
-table_info: [
+ table_info: [
   {
     is_base_table: true,
 
@@ -2442,10 +2779,10 @@ table_info: [
 
     operator_game_id: baseFamily,
 
-  table_name:
-  tableConfig?.table_name ||
-  tableFamily?.[0]?.table_name ||
-  null,
+    table_name:
+      tableConfig?.table_name ||
+      tableFamily?.[0]?.table_name ||
+      null,
 
     platform_enabled:
       games.some(
@@ -2458,6 +2795,9 @@ table_info: [
       lcGameIds.includes(
         `${baseFamily}`,
       ),
+
+    table_config:
+      [],
   },
 
   ...tableFamily
@@ -2489,9 +2829,77 @@ table_info: [
           lcGameIds.includes(
             `${table.operator_game_id}`,
           ),
-      })),
+
+        table_config:
+          [],
+      }),
+    ),
 ],
   };
+}
+
+//Push table config evnet//
+private pushTableConfigEvent(
+  tableConfigEventMap: Map<string, any[]>,
+  operatorGameId: string,
+  event: any,
+) {
+  if (!operatorGameId) {
+    return;
+  }
+
+  const key = `${operatorGameId}`;
+
+  if (!tableConfigEventMap.has(key)) {
+    tableConfigEventMap.set(key, []);
+  }
+
+  const existingEvents =
+    tableConfigEventMap.get(key) || [];
+
+  const uniqueKey =
+    `${operatorGameId}_${event.player_ip || ''}_${event.player_country || ''}_${event.player_region || ''}_${event.session_id || ''}_${event.block_level || ''}`;
+
+  const alreadyExists =
+    existingEvents.some(
+      (x: any) =>
+        `${operatorGameId}_${x.player_ip || ''}_${x.player_country || ''}_${x.player_region || ''}_${x.session_id || ''}_${x.block_level || ''}` ===
+        uniqueKey,
+    );
+
+  if (!alreadyExists) {
+    existingEvents.push(event);
+  }
+
+  tableConfigEventMap.set(
+    key,
+    existingEvents,
+  );
+}
+
+private attachTableConfigEvents(
+  tableInfo: any[],
+  tableConfigEventMap: Map<string, any[]>,
+) {
+  return tableInfo.map((table: any) => {
+    const operatorGameId =
+      `${table.operator_game_id}`;
+
+    const tableConfigEvents =
+      tableConfigEventMap.get(operatorGameId) ||
+      [];
+
+    return {
+      ...table,
+
+      table_config:
+        tableConfigEvents.sort(
+          (a: any, b: any) =>
+            new Date(a.timestamp || 0).getTime() -
+            new Date(b.timestamp || 0).getTime(),
+        ),
+    };
+  });
 }
   // =====================================================
   // FILTER GAME LAUNCH LOGS

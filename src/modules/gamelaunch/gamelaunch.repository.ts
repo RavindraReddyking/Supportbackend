@@ -174,8 +174,8 @@ for (
 ) {
   let timeout = 7000;
 
-  if (attempt === 4) {
-    timeout = 25000;
+  if (attempt === 5) {
+    timeout = 65000;
   }
 
   try {
