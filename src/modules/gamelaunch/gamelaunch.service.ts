@@ -2755,6 +2755,31 @@ private casinoMatches(
   );
 }
 
+// =====================================================
+// LC LOG LEVEL
+// =====================================================
+private getLcLogLevel(
+  log: any,
+): string {
+  const text =
+    log?.message || '';
+
+  if (text.includes('"error":0')) {
+    return 'SUCCESS';
+  }
+
+  if (
+    text.match(
+      /"error"\s*:\s*\d+/,
+    )
+  ) {
+    return 'ERROR';
+  }
+
+  return 'INFO';
+}
+
+
   private mapLogs(logs: any[]) {
     return logs.map(
       (log: any) => ({
@@ -2763,6 +2788,8 @@ private casinoMatches(
 
         _index:
           log?._index || '',
+          log_level:
+  this.getLcLogLevel(log),
 
         timestamp:
           log?.[

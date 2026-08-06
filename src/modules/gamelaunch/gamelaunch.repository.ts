@@ -165,7 +165,7 @@ const index = Array.isArray(
 )
   ? params.index.join(',')
   : params.index;
-  const maxAttempts = 4;
+  const maxAttempts = 5;
 
 for (
   let attempt = 1;
@@ -175,7 +175,7 @@ for (
   let timeout = 7000;
 
   if (attempt === 4) {
-    timeout = 45000;
+    timeout = 25000;
   }
 
   try {
