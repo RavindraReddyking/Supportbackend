@@ -572,6 +572,46 @@ const indexes =
     });
   }
 
+//Get LC Blocked countries//
+async getLcBlockedCountries(
+  operatorGameIds: string[],
+) {
+  const dbenv = process.env.DBENV;
+
+  const ids = operatorGameIds
+    .map((_, index) => `@id${index}`)
+    .join(',');
+
+  return this.database.query(
+    (request) => {
+      operatorGameIds.forEach(
+        (id, index) => {
+          request.input(
+            `id${index}`,
+            sql.VarChar(50),
+            id,
+          );
+        },
+      );
+
+      return request;
+    },
+
+    `
+SELECT DISTINCT
+    tc.operator_game_id,
+    c.name,
+    g.country_code
+FROM ${dbenv}.GameTable_Country_Block_Map g WITH (NOLOCK)
+INNER JOIN ${dbenv}.tableconfig tc WITH (NOLOCK)
+    ON tc.table_id = g.table_id
+INNER JOIN ${dbenv}.country c WITH (NOLOCK)
+    ON c.country_code = g.country_code
+WHERE tc.operator_game_id IN (${ids})
+    `,
+  );
+}
+
 // =====================================================
 // ✅ FULL TOKEN LOG SEARCH (NO QUERY STRING FILTER)
 // =====================================================

@@ -55,6 +55,92 @@ export class GameLaunchService {
   // HELPERS
   // =====================================================
 
+private readonly GAME_NAME_OVERRIDE: Record<string, string> = {
+  '007': 'MultiTable Play',
+  '100001': 'CASIBOM Lobby',
+  '100002': 'Gamdom Lobby',
+  '100003': 'OZEL Lobby',
+  '100004': '32ROSU Lobby',
+  '100005': '32RED Lobby',
+  '100006': '1WINLIVE Lobby',
+  '100007': 'RAINBETCLUB Lobby',
+  '100008': 'Sky Bet Lobby',
+  '101': 'Live Casino Lobby',
+  '102': 'Roulette Lobby',
+  '103': 'Blackjack Lobby',
+  '104': 'Baccarat Lobby',
+  '105': 'Gameshows Lobby',
+  '107': 'Sic Bo Lobby',
+  '108': 'Dragon Tiger Lobby',
+  '109': 'Sic Bo & Dragon Tiger',
+  '110': 'D&W',
+  '152': 'Sky Vegas Lobby',
+  '153': 'Betfair Lobby',
+  '154': 'Paddy Power Lobby',
+  '163': 'Exclusives',
+  '165': 'QQGroup Lobby',
+  '166': 'Sky Casino Lobby',
+  '167': 'Queen Casino Lobby',
+  '168': 'Crash Games Lobby',
+  '169': 'Poker Lobby',
+  '170': 'MeritKing Lobby',
+  '171': 'CrystalBet Lobby',
+  '172': 'JetBahis Lobby',
+  '173': 'Localised Lobby',
+  '174': 'MPO Lounge',
+  '175': 'ION Lobby',
+  '176': 'Live Mania Lobby',
+  '177': 'BCGame Lounge',
+  '178': 'BayWin Lobby',
+  '179': 'BetOrSpin Lobby',
+  '180': 'Zlot Lobby',
+  '181': 'Bahis Lobby',
+  '182': 'TipoBet Lobby',
+  '183': 'MarioBet Lobby',
+  '184': 'MatadorBet Lobby',
+  '185': 'Elite Lobby',
+  '186': 'BetTurkey Lobby',
+  '187': 'TarafBet Lobby',
+  '188': 'Betist Lobby',
+  '189': 'OnWin Lobby',
+  '190': 'SahaBet Lobby',
+  '191': 'Stake Lounge Lobby',
+  '192': 'LuckyDreams Lobby',
+  '193': 'LuckyOnes Lobby',
+  '194': 'JustCasino Lobby',
+  '195': 'MatBet Lobby',
+  '196': 'JojoBet Ozel Lobby',
+  '197': 'Mars Lobisi Lobby',
+  '198': 'HoliganBet Lobby',
+  '199': 'Shuffle Lobby',
+};
+
+private getGameDisplayName(
+  gameId: string,
+  gameName?: string,
+): string {
+  return (
+    this.GAME_NAME_OVERRIDE[gameId] ||
+    gameName ||
+    gameId
+  );
+}
+
+
+private getApiEnv(env: string): string {
+  switch (env?.trim()?.toLowerCase()) {
+    case 'dk':
+      return 'dk0';
+
+    case 'tw1':
+      return 'sg19';
+
+    default:
+      return env;
+  }
+}
+
+
   private extractCasinoId(
     casinoId: string,
   ): string {
@@ -436,6 +522,7 @@ if (
     const env = String(
       data.env,
     ).trim();
+    const apiEnv = this.getApiEnv(env);
 
     const UCID = data.UCID;
 
@@ -446,7 +533,7 @@ if (
       `/RGSGateway/GameAPI/getCasinoGames/${finalCasinoId}/`;
 
     let url =
-      `https://api-${env}.ppgames.net${path}`;
+  `https://api-${apiEnv}.ppgames.net${path}`;
 
     const timestamp = Math.round(
       new Date().getTime() / 1000,
@@ -501,8 +588,8 @@ try {
       'PPGAMES returned empty response, falling back to pragmaticplay.net',
     );
 
-    url =
-      `https://api-${env}.pragmaticplay.net${path}`;
+ url =
+  `https://api-${apiEnv}.pragmaticplay.net${path}`;
 
     response =
       await axios.get(
@@ -518,8 +605,8 @@ try {
     error.message,
   );
 
-  url =
-    `https://api-${env}.pragmaticplay.net${path}`;
+ url =
+  `https://api-${apiEnv}.pragmaticplay.net${path}`;
 
   console.log(
     'Trying fallback URL:',
@@ -581,14 +668,15 @@ console.log('REQUESTED URL:', url);
   const env = String(
     data.env,
   ).trim();
+  const apiEnv = this.getApiEnv(env);
 
   const UCID = data.UCID;
 
   const path =
     '/RGSGateway/CommonAPI/casino/configurations';
 
-  let url =
-    `https://api-${env}.ppgames.net${path}`;
+ let url =
+  `https://api-${apiEnv}.ppgames.net${path}`;
 
   const timestamp = Math.round(
     new Date().getTime() / 1000,
@@ -644,8 +732,8 @@ console.log('REQUESTED URL:', url);
           'PPGAMES returned empty response, falling back to pragmaticplay.net',
         );
 
-        url =
-          `https://api-${env}.pragmaticplay.net${path}`;
+       url =
+  `https://api-${apiEnv}.pragmaticplay.net${path}`;
 
         response =
           await axios.post(
@@ -662,8 +750,8 @@ console.log('REQUESTED URL:', url);
         error.message,
       );
 
-      url =
-        `https://api-${env}.pragmaticplay.net${path}`;
+     url =
+  `https://api-${apiEnv}.pragmaticplay.net${path}`;
 
       console.log(
         'Trying fallback URL:',
@@ -790,6 +878,33 @@ const tableFamilyResponse: any =
 
 const tableFamily =
   tableFamilyResponse?.recordset || [];
+
+  const baseGameId =
+  parsed.symbol.match(/^\d+/)?.[0] ||
+  parsed.symbol;
+
+  const blockedCountriesResponse =
+  await this.repository.getLcBlockedCountries([
+    baseGameId,
+  ]);
+
+  const lcBlockedCountryMap =
+  new Map<string, any[]>();
+
+for (const row of (blockedCountriesResponse?.recordset || []) as any[]) {
+  const key = String(
+    row.operator_game_id,
+  );
+
+  if (!lcBlockedCountryMap.has(key)) {
+    lcBlockedCountryMap.set(key, []);
+  }
+
+  lcBlockedCountryMap.get(key)?.push({
+    country_name: row.name,
+    country_code: row.country_code,
+  });
+}
 
   const styleName =
     parsed.stylename ||
@@ -1521,6 +1636,7 @@ const result =
     tableFamily,
     lcTables,
     platformGames,
+    lcBlockedCountryMap,
   );
 
 const casinoPlatformLogs =
@@ -1932,6 +2048,42 @@ return (
     'UNIQUE GAME IDS:',
     uniqueGameIds,
   );
+
+  const baseGameIds = [
+  ...new Set(
+    (uniqueGameIds as string[]).map(
+      (gameId) =>
+        gameId.match(/^\d+/)?.[0] ||
+        gameId,
+    ),
+  ),
+];
+const blockedCountriesResponse =
+  await this.repository.getLcBlockedCountries(
+    baseGameIds,
+  );
+
+  const lcBlockedCountryMap =
+  new Map<string, any[]>();
+
+for (
+  const row of (
+    blockedCountriesResponse?.recordset || []
+  ) as any[]
+) {
+  const key = String(
+    row.operator_game_id,
+  );
+
+  if (!lcBlockedCountryMap.has(key)) {
+    lcBlockedCountryMap.set(key, []);
+  }
+
+  lcBlockedCountryMap.get(key)?.push({
+    country_name: row.name,
+    country_code: row.country_code,
+  });
+}
 
   const matchedCasinoId =
     fullLogs.find(
@@ -2576,7 +2728,7 @@ const tableFamily =
     baseFamily,
   ) || [];
 
-    const result =
+ const result =
   this.buildCasinoResult(
     casino,
     String(gameId),
@@ -2584,6 +2736,7 @@ const tableFamily =
     tableFamily,
     lcTables,
     platformGames,
+    lcBlockedCountryMap,
   );
 
       if (!firstResult) {
@@ -2711,7 +2864,9 @@ private buildCasinoResult(
   tableFamily: any[],
   lcTables: any[],
   platformGames: any,
-) {
+  lcBlockedCountryMap: Map<string, any[]>,
+)
+{
   const casinoId =
     casino.casino_id;
 
@@ -2773,16 +2928,16 @@ console.log(
       casino.active_flag,
  table_info: [
   {
-    is_base_table: true,
+  is_base_table: true,
 
-    base_table_id: baseFamily,
+  base_table_id: baseFamily,
 
-    operator_game_id: baseFamily,
-
-    table_name:
-      tableConfig?.table_name ||
-      tableFamily?.[0]?.table_name ||
-      null,
+  operator_game_id: baseFamily,
+  table_name: this.getGameDisplayName(
+    baseFamily,
+    tableConfig?.table_name ||
+      tableFamily?.[0]?.table_name,
+  ) || null,
 
     platform_enabled:
       games.some(
@@ -2795,7 +2950,11 @@ console.log(
       lcGameIds.includes(
         `${baseFamily}`,
       ),
-
+ lc_blocked_countries:
+    lcBlockedCountryMap.get(
+      baseFamily,
+    ) || [],
+    
     table_config:
       [],
   },
@@ -2808,15 +2967,17 @@ console.log(
     )
     .map(
       (table: any) => ({
-        is_base_table: false,
+  is_base_table: false,
 
-        base_table_id: baseFamily,
+  base_table_id: baseFamily,
 
-        operator_game_id:
-          table.operator_game_id,
+  operator_game_id:
+    table.operator_game_id,
 
-        table_name:
-          table.table_name,
+  table_name: this.getGameDisplayName(
+    String(table.operator_game_id),
+    table.table_name,
+  ),
 
         platform_enabled:
           games.some(
@@ -2829,6 +2990,7 @@ console.log(
           lcGameIds.includes(
             `${table.operator_game_id}`,
           ),
+           lc_blocked_countries: [],
 
         table_config:
           [],
