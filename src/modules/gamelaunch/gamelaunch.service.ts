@@ -239,43 +239,42 @@ private populatePlatformConfigInfo(
   const regionSettings =
     matchedCasinoConfig?.configuration
       ?.regionSettings;
+return {
+  casino_jurisdiction:
+    jurisdictionSettings?.casinoJurisdiction?.trim()
+      ? jurisdictionSettings.casinoJurisdiction
+      : 'Allowed to all',
 
-  return {
-    casinoJurisdiction:
-      jurisdictionSettings?.casinoJurisdiction?.trim()
-        ? jurisdictionSettings.casinoJurisdiction
-        : 'Allowed to all',
+  jurisdiction_priority:
+    jurisdictionSettings?.jurisdictionPriority?.trim()
+      ? jurisdictionSettings.jurisdictionPriority
+      : 'Allowed to all',
 
-    jurisdictionPriority:
-      jurisdictionSettings?.jurisdictionPriority?.trim()
-        ? jurisdictionSettings.jurisdictionPriority
-        : 'Allowed to all',
+  accessible_jurisdictions:
+    jurisdictionSettings?.accessibleJurisdictions?.trim()
+      ? jurisdictionSettings.accessibleJurisdictions
+      : 'Allowed to all',
 
-    accessibleJurisdictions:
-      jurisdictionSettings?.accessibleJurisdictions?.trim()
-        ? jurisdictionSettings.accessibleJurisdictions
-        : 'Allowed to all',
+  casino_blocked_countries:
+    countrySettings?.casinoBlockedCountries?.trim()
+      ? countrySettings.casinoBlockedCountries
+      : 'N/A',
 
-    casinoBlockedCountries:
-      countrySettings?.casinoBlockedCountries?.trim()
-        ? countrySettings.casinoBlockedCountries
-        : 'N/A',
+  unblocked_countries:
+    countrySettings?.unblockedCountries?.trim()
+      ? countrySettings.unblockedCountries
+      : 'N/A',
 
-    unblockedCountries:
-      countrySettings?.unblockedCountries?.trim()
-        ? countrySettings.unblockedCountries
-        : 'N/A',
+  casino_blocked_regions:
+    regionSettings?.casinoBlockedRegions?.trim()
+      ? regionSettings.casinoBlockedRegions
+      : 'N/A',
 
-    casinoBlockedRegions:
-      regionSettings?.casinoBlockedRegions?.trim()
-        ? regionSettings.casinoBlockedRegions
-        : 'N/A',
-
-    unblockedRegions:
-      regionSettings?.unblockedRegions?.trim()
-        ? regionSettings.unblockedRegions
-        : 'N/A',
-  };
+  unblocked_regions:
+    regionSettings?.unblockedRegions?.trim()
+      ? regionSettings.unblockedRegions
+      : 'N/A',
+};
 }
 
 
