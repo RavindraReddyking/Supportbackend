@@ -612,6 +612,110 @@ WHERE tc.operator_game_id IN (${ids})
   );
 }
 
+//merged lobby config erorrs//
+async searchCasinoMappingErrors(params: {
+  ucId: string;
+  from: string;
+  to: string;
+}) {
+
+  const body = {
+    size: 1000,
+
+    sort: [
+      {
+        '@timestamp': {
+          order: 'asc',
+        },
+      },
+    ],
+
+    query: {
+      bool: {
+        must: [],
+        filter: [
+          {
+            match_phrase: {
+              'contextMap.apiType':
+                'unified-lobby-v2',
+            },
+          },
+          {
+            match_phrase: {
+              'contextMap.ucId':
+                params.ucId,
+            },
+          },
+          {
+            match_phrase: {
+              message:
+                'No casino Mapping found for ucId:',
+            },
+          },
+          {
+            range: {
+              '@timestamp': {
+                gte: params.from,
+                lte: params.to,
+              },
+            },
+          },
+        ],
+        should: [],
+        must_not: [],
+      },
+    },
+  };
+const maxAttempts = 3;
+
+let res: any;
+
+for (
+  let attempt = 1;
+  attempt <= maxAttempts;
+  attempt++
+) {
+  let timeout = 7000;
+
+  if (attempt === 3) {
+    timeout = 25000;
+  }
+
+  try {
+    res = await axios.post(
+      `${process.env.ES_HOST}/filebeat-live-*/_search`,
+      body,
+      {
+        headers: this.headers(),
+        timeout,
+      },
+    );
+
+    break;
+  } catch (error: any) {
+    console.log(
+      'CASINO_MAPPING_SEARCH FAILED:',
+      attempt,
+      error?.message,
+    );
+
+    if (attempt === maxAttempts) {
+      throw error;
+    }
+
+    await new Promise((r) =>
+      setTimeout(r, 1000),
+    );
+  }
+}
+return (
+  res.data?.hits?.hits || []
+).map((x: any) => ({
+  _id: x._id,
+  _index: x._index,
+  ...x._source,
+}));
+}
 // =====================================================
 // ✅ FULL TOKEN LOG SEARCH (NO QUERY STRING FILTER)
 // =====================================================
