@@ -271,12 +271,18 @@ for (
       `
 SELECT TOP 1
   owc.casino_id,
+  c.casino_desc,
   e.login,
   e.name AS env,
   owc.UCID
 FROM ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
+
 INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
   ON e.env_id = owc.env
+
+LEFT JOIN ${dbenv}.casino c WITH (NOLOCK)
+  ON c.casino_id = owc.casino_id
+
 WHERE owc.casino_id = @CasinoId
       `,
     );

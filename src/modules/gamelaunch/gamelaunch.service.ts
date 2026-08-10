@@ -135,8 +135,8 @@ private getApiEnv(env: string): string {
     case 'tw1':
       return 'sg19';
 
-         case 'sg57':
-      return '2703';
+         case 'gi':
+      return 'gi0';
 
     default:
       return env;
@@ -144,24 +144,73 @@ private getApiEnv(env: string): string {
 }
 
 
-  private extractCasinoId(
-    casinoId: string,
-  ): string {
-    const numericPart =
-      casinoId.replace(/\D/g, '');
+//UUID missing logs mapping//
+private buildPpenvCasinoMap(
+  logs: any[],
+) {
+  const ppenvCasinoMap =
+    new Map<string, string>();
 
-    let startIndex =
-      numericPart.length - 4;
+  for (const log of logs) {
+    const ppenv =
+      log?.contextMap?.ppenv;
 
-    while (
-      startIndex > 0 &&
-      numericPart[startIndex] === '0'
+    const casinoId =
+      log?.contextMap?.casinoId;
+
+    if (
+      ppenv &&
+      casinoId &&
+      !ppenvCasinoMap.has(ppenv)
     ) {
-      startIndex--;
+      ppenvCasinoMap.set(
+        String(ppenv),
+        String(casinoId),
+      );
     }
-
-    return numericPart.substring(startIndex);
   }
+
+  return ppenvCasinoMap;
+}
+
+//Platfrom config mapping helper//
+private getBaseApiUrl(apiEnv: string): string {
+  const legacyEnvs = ['sga15', 'in4'];
+
+  if (
+    legacyEnvs.includes(
+      apiEnv.toLowerCase(),
+    )
+  ) {
+    return `https://api-${apiEnv}.ppgames.net`;
+  }
+
+  return `https://api-rgs-${apiEnv}.ppgames.net`;
+}
+
+private getFallbackApiUrl(apiEnv: string): string {
+  const legacyEnvs = ['sga15', 'in4'];
+
+  if (
+    legacyEnvs.includes(
+      apiEnv.toLowerCase(),
+    )
+  ) {
+    return `https://api-${apiEnv}.pragmaticplay.net`;
+  }
+
+  return `https://api-rgs-${apiEnv}.pragmaticplay.net`;
+}
+
+private extractCasinoId(
+  casinoId: string,
+): string {
+  return String(
+    Number(
+      casinoId.replace(/\D/g, ''),
+    ),
+  );
+}
 
   private extractBaseTable(
     symbol: string,
@@ -590,7 +639,7 @@ if (
       `/RGSGateway/GameAPI/getCasinoGames/${finalCasinoId}/`;
 
     let url =
-  `https://api-${apiEnv}.ppgames.net${path}`;
+  `${this.getBaseApiUrl(apiEnv)}${path}`;
 
     const timestamp = Math.round(
       new Date().getTime() / 1000,
@@ -645,8 +694,8 @@ try {
       'PPGAMES returned empty response, falling back to pragmaticplay.net',
     );
 
- url =
-  `https://api-${apiEnv}.pragmaticplay.net${path}`;
+url =
+  `${this.getFallbackApiUrl(apiEnv)}${path}`;
 
     response =
       await axios.get(
@@ -663,7 +712,7 @@ try {
   );
 
  url =
-  `https://api-${apiEnv}.pragmaticplay.net${path}`;
+  `${this.getFallbackApiUrl(apiEnv)}${path}`;
 
   console.log(
     'Trying fallback URL:',
@@ -733,7 +782,7 @@ console.log('REQUESTED URL:', url);
     '/RGSGateway/CommonAPI/casino/configurations';
 
  let url =
-  `https://api-${apiEnv}.ppgames.net${path}`;
+  `${this.getBaseApiUrl(apiEnv)}${path}`;
 
   const timestamp = Math.round(
     new Date().getTime() / 1000,
@@ -790,7 +839,7 @@ console.log('REQUESTED URL:', url);
         );
 
        url =
-  `https://api-${apiEnv}.pragmaticplay.net${path}`;
+  `${this.getFallbackApiUrl(apiEnv)}${path}`;
 
         response =
           await axios.post(
@@ -802,29 +851,28 @@ console.log('REQUESTED URL:', url);
           );
       }
     } catch (error: any) {
-      console.log(
-        'PPGAMES failed:',
-        error.message,
-      );
+  console.log(
+    'PPGAMES failed:',
+    error.message,
+  );
 
-     url =
-  `https://api-${apiEnv}.pragmaticplay.net${path}`;
+  url =
+    `${this.getFallbackApiUrl(apiEnv)}${path}`;
 
-      console.log(
-        'Trying fallback URL:',
-        url,
-      );
+  console.log(
+    'Trying fallback URL:',
+    url,
+  );
 
-      response =
-        await axios.post(
-          url,
-          {},
-          {
-            headers,
-          },
-        );
-    }
-
+  response =
+    await axios.post(
+      url,
+      {},
+      {
+        headers,
+      },
+    );
+}
     console.log(
       'PLATFORM CONFIG URL:',
       url,
@@ -899,12 +947,18 @@ private buildSessionMaps(logs: any[]) {
   const uuidCasinoMap =
     new Map<string, string>();
 
+  const ppenvGameMap =
+    new Map<string, Set<string>>();
+
   for (const log of logs) {
     const uuid =
       log?.contextMap?.uuid ||
       log?.contextMap?.['uuid:'];
 
-    if (!uuid) {
+    const ppenv =
+      log?.contextMap?.ppenv;
+
+    if (!uuid && !ppenv) {
       continue;
     }
 
@@ -921,10 +975,24 @@ private buildSessionMaps(logs: any[]) {
       text.match(/"gameID":"([^"]+)"/)?.[1] ||
       text.match(/"operatorGameId":"([^"]+)"/)?.[1];
 
+    if (ppenv && gameId) {
+      if (!ppenvGameMap.has(ppenv)) {
+        ppenvGameMap.set(
+          ppenv,
+          new Set<string>(),
+        );
+      }
+
+      ppenvGameMap
+        .get(ppenv)
+        ?.add(String(gameId));
+    }
+
     const casinoId =
       log?.contextMap?.casinoId;
 
     if (
+      uuid &&
       gameId &&
       !uuidGameMap.has(uuid)
     ) {
@@ -935,6 +1003,7 @@ private buildSessionMaps(logs: any[]) {
     }
 
     if (
+      uuid &&
       casinoId &&
       !uuidCasinoMap.has(uuid)
     ) {
@@ -948,74 +1017,242 @@ private buildSessionMaps(logs: any[]) {
   return {
     uuidGameMap,
     uuidCasinoMap,
+    ppenvGameMap,
   };
 }
-
+////launch fail mapaping//
 private buildLaunchFailureMap(
   logs: any[],
   uuidGameMap: Map<string, string>,
   uuidCasinoMap: Map<string, string>,
-) {
+  ppenvCasinoMap: Map<string, string>,
+  ppenvGameMap: Map<string, Set<string>>,
+)
+
+{
   const launchFailureMap =
     new Map<string, boolean>();
+for (const log of logs) {
 
-  for (const log of logs) {
-    const text = [
-      log?.message,
-      log?.requestLog,
-      log?.responseLog,
-      log?.error,
-    ]
-      .filter(Boolean)
-      .join(' ');
+  console.log(
+    'PROCESSING LOG'
+  );
+
+  const text = [
+    log?.message,
+    log?.requestLog,
+    log?.responseLog,
+    log?.error,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
     // Only UserAPI failures
-    if (
-      !text.includes('/RGSGateway/UserAPI/')
-    ) {
-      continue;
-    }
+  const isUserApi =
+  text.includes(
+    '/RGSGateway/UserAPI/',
+  );
+
+console.log(
+  'USERAPI MATCH:',
+  isUserApi,
+);
+
+if (!isUserApi) {
+  continue;
+}
 
     const errorCode =
       this.extractErrorCodeFromText(
         text,
       );
 
+      console.log(
+  'ERROR CODE:',
+  errorCode,
+);
+
+console.log(
+  'TEXT SAMPLE:',
+  text.substring(0, 500),
+);
+
     // Ignore success
-    if (
-      errorCode === null ||
-      errorCode === 0
-    ) {
-      continue;
-    }
+ if (
+  errorCode === null ||
+  errorCode === 0
+) {
+
+  console.log(
+    'SKIPPED DUE TO ERROR CODE:',
+    errorCode,
+  );
+
+  continue;
+}
 
     const uuid =
       log?.contextMap?.uuid ||
       log?.contextMap?.['uuid:'];
+      const ppenv =
+  log?.contextMap?.ppenv;
 
-    if (!uuid) {
-      continue;
-    }
+      console.log(
+  'ERROR LOG UUID INFO',
+  {
+    uuid:
+      log?.contextMap?.uuid,
+    uuidColon:
+      log?.contextMap?.['uuid:'],
+    casinoId:
+      log?.contextMap?.casinoId,
+    ppenv:
+      log?.contextMap?.ppenv,
+  },
+);
 
-    const gameId =
-      uuidGameMap.get(uuid);
 
-    const casinoId =
-      uuidCasinoMap.get(uuid);
 
-    if (
-      gameId &&
-      casinoId
-    ) {
-      launchFailureMap.set(
-        `${casinoId}_${gameId}`,
-        true,
+if (!uuid && !ppenv) {
+  console.log(
+    'ERROR RECORD HAS NO UUID OR PPENV',
+    {
+      errorCode,
+      casinoId:
+        log?.contextMap?.casinoId,
+      ppenv:
+        log?.contextMap?.ppenv,
+    },
+  );
+
+  continue;
+}
+console.log(
+  'FOUND UUID FOR ERROR',
+  uuid,
+);
+
+
+let gameId =
+  uuidGameMap.get(uuid);
+
+if (!gameId) {
+  gameId =
+    text.match(/gameid=(\d+)/i)?.[1] ||
+    text.match(/"gameID":"([^"]+)"/)?.[1] ||
+    text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+}
+
+if (!gameId && ppenv) {
+  const games =
+    ppenvGameMap.get(
+      String(ppenv),
+    );
+
+  if (games?.size) {
+    gameId = [...games][0];
+  }
+}
+
+console.log(
+  'GAME LOOKUP RESULT',
+  {
+    uuid,
+    gameId,
+    mapValue:
+      uuidGameMap.get(uuid),
+  },
+);
+console.log(
+  'RESOLVED GAME:',
+  gameId,
+);
+
+    let casinoId =
+  uuidCasinoMap.get(uuid);
+
+if (!casinoId) {
+  const ppenv =
+    log?.contextMap?.ppenv;
+
+  if (ppenv) {
+    casinoId =
+      ppenvCasinoMap.get(
+        String(ppenv),
       );
-    }
+  }
+}
+console.log(
+  'CASINO LOOKUP RESULT',
+  {
+    uuid,
+    casinoId,
+    mapValue:
+      uuidCasinoMap.get(uuid),
+    ppenv:
+      log?.contextMap?.ppenv,
+  },
+);
+
+console.log(
+  'RESOLVED CASINO:',
+  casinoId,
+);
+console.log(
+  'FAILURE LOOKUP:',
+  {
+    uuid,
+    gameId,
+    casinoId,
+    ppenv:
+      log?.contextMap?.ppenv,
+  },
+);
+console.log(
+  'FINAL VALUES',
+  {
+    uuid,
+    gameId,
+    casinoId,
+  },
+);
+
+if (!gameId || !casinoId) {
+  console.log(
+    'LAUNCH FAILURE SKIPPED:',
+    {
+      uuid,
+      gameId,
+      casinoId,
+      ppenv:
+        log?.contextMap?.ppenv,
+    },
+  );
+
+  continue;
+}
+
+console.log(
+  'LAUNCH FAILURE RESOLVED:',
+  {
+    uuid,
+    gameId,
+    casinoId,
+  },
+);
+console.log(
+  'ADDING TO FAILURE MAP:',
+  `${casinoId}_${gameId}`,
+);
+launchFailureMap.set(
+  `${casinoId}_${gameId}`,
+  true,
+);
   }
 
   return launchFailureMap;
 }
+
   // =====================================================
   // INVESTIGATION
   // =====================================================
@@ -1144,50 +1381,75 @@ console.log("CASINOS LENGTH:", casinos.length);
     );
   };
 
-  const entryLog = rawLogs.find((x: any) =>
-    getUUID(x),
-  );
+const uuids = [
+  ...new Set(
+    rawLogs
+      .map((x: any) =>
+        getUUID(x),
+      )
+      .filter(Boolean),
+  ),
+] as string[];
 
-  const uuid = getUUID(entryLog);
+console.log(
+  'ALL UUIDS:',
+  uuids,
+);
 
-  console.log('UUID FOUND:', uuid);
-
-  // =====================================================
-  // ✅ STEP 3: UUID SEARCH
-  // =====================================================
-
-  let uuidLogs: any[] = [];
-
-  if (uuid) {
-    uuidLogs =
-      await this.repository.searchLogsByUUID({
+const uuidResults =
+  await Promise.all(
+    uuids.map((uuid) =>
+      this.repository.searchLogsByUUID({
         uuid,
         from,
         to,
-      });
-  }
-
-  console.log(
-    'UUID LOG COUNT:',
-    uuidLogs.length,
+      }),
+    ),
   );
+
+const uuidLogs = Array.from(
+  new Map(
+    uuidResults
+      .flat()
+      .map((log: any) => [
+        log._id,
+        log,
+      ]),
+  ).values(),
+);
+
+console.log(
+  'UUID LOG COUNT:',
+  uuidLogs.length,
+);
+
 
   // =====================================================
   // ✅ STEP 4: CONFIG DETECTION (IMPROVED ✅)
   // =====================================================
 
-  const logsToCheck =
-    uuidLogs.length > 0
-      ? uuidLogs
-      : rawLogs;
+ const logsToCheck = Array.from(
+  new Map(
+    [...rawLogs, ...uuidLogs].map(
+      (log: any) => [
+        log._id,
+        log,
+      ],
+    ),
+  ).values(),
+);
 
-  const {
+console.log(
+  'COMBINED LOG COUNT:',
+  logsToCheck.length,
+);
+ const {
   uuidGameMap,
   uuidCasinoMap,
+  ppenvGameMap,
 } = this.buildSessionMaps(
   logsToCheck,
 );
-
 
 console.log(
   'UUID GAME MAP:',
@@ -1199,11 +1461,42 @@ console.log(
   Array.from(uuidCasinoMap.entries()),
 );
 
+let fullLogs: any[] = [];
+
+fullLogs =
+  await this.repository.searchAllLogsByToken({
+    token: token || '',
+    from,
+    to,
+  });
+
+
+
+
+console.log(
+  'FIRST LOG CASINO ID:',
+  fullLogs[0]?.contextMap?.casinoId,
+);
+
+const ppenvCasinoMap =
+  this.buildPpenvCasinoMap(
+    [...fullLogs, ...logsToCheck],
+  );
+
+console.log(
+  'PPENV CASINO MAP:',
+  Array.from(
+    ppenvCasinoMap.entries(),
+  ),
+);
+
 const launchFailureMap =
   this.buildLaunchFailureMap(
     logsToCheck,
     uuidGameMap,
     uuidCasinoMap,
+    ppenvCasinoMap,
+    ppenvGameMap,
   );
 
 console.log(
@@ -1218,25 +1511,33 @@ const matchedCasinoId =
       x?.contextMap?.casinoId,
   )?.contextMap?.casinoId || null;
 
-const matchedCasinoName =
-  logsToCheck.find(
-    (x: any) =>
-      x?.contextMap?.casinoName,
-  )?.contextMap?.casinoName || null;
-
-if (
+  if (
   casinos.length === 0 &&
   matchedCasinoId
 ) {
+  const casinoDetails =
+    await this.repository.getCasinoDetails(
+      matchedCasinoId,
+    );
+
+  const dbCasino: any =
+    casinoDetails?.recordset?.[0];
+
   casinos = [
     {
       casino_id:
         matchedCasinoId,
 
       casino_desc:
-        matchedCasinoName,
+        dbCasino?.casino_desc || '',
 
       active_flag: null,
+
+      env:
+        dbCasino?.env || '',
+
+      ucid:
+        dbCasino?.UCID || '',
     },
   ];
 }
@@ -1270,24 +1571,6 @@ const isConfigIssue =
       '',
   }));
 
-  let fullLogs: any[] = [];
-
-fullLogs =
-  await this.repository.searchAllLogsByToken({
-    token: token || '',
-    from,
-    to,
-  });
-
-console.log(
-  'FULL TOKEN LOGS:',
-  fullLogs.length,
-);
-
-console.log(
-  'FIRST LOG CASINO ID:',
-  fullLogs[0]?.contextMap?.casinoId,
-);
 
 const matchedCasinoIdFromFullLogs =
   fullLogs.find(
@@ -1477,12 +1760,13 @@ if (casinos.length === 1) {
       casinos[0].casino_id,
     );
 
-  matchedCasinoConfig =
-    platformConfig?.data?.casinoConfigurations?.find(
-      (x: any) =>
-        `${x.casinoID}` ===
-        `${targetCasinoId}`,
-    );
+matchedCasinoConfig =
+  platformConfig?.data?.casinoConfigurations?.find(
+    (x: any) =>
+      Number(x.casinoID) ===
+      Number(targetCasinoId),
+  );
+
 }
 
 
@@ -1874,12 +2158,13 @@ try {
       casino.casino_id,
     );
 
-  const matchedCasinoConfig =
-    platformConfig?.data?.casinoConfigurations?.find(
-      (x: any) =>
-        `${x.casinoID}` ===
-        `${targetCasinoId}`,
-    );
+matchedCasinoConfig =
+  platformConfig?.data?.casinoConfigurations?.find(
+    (x: any) =>
+      Number(x.casinoID) ===
+      Number(targetCasinoId),
+  );
+
 
 
   casinoPlatformConfig =
@@ -2230,13 +2515,25 @@ console.log(
   'UUID LOG COUNT:',
   uuidLogs.length,
 );
-  const logsToCheck =
-    uuidLogs.length > 0
-      ? uuidLogs
-      : fullLogs;
+  const logsToCheck = Array.from(
+  new Map(
+    [...fullLogs, ...uuidLogs].map(
+      (log: any) => [
+        log._id,
+        log,
+      ],
+    ),
+  ).values(),
+);
+
+console.log(
+  'COMBINED LOG COUNT:',
+  logsToCheck.length,
+);
 const {
   uuidGameMap,
   uuidCasinoMap,
+  ppenvGameMap,
 } = this.buildSessionMaps(
   logsToCheck,
 );
@@ -2251,11 +2548,25 @@ console.log(
   Array.from(uuidCasinoMap.entries()),
 );
 
+const ppenvCasinoMap =
+  this.buildPpenvCasinoMap(
+    [...fullLogs, ...logsToCheck],
+  );
+
+console.log(
+  'PPENV CASINO MAP:',
+  Array.from(
+    ppenvCasinoMap.entries(),
+  ),
+);
+
 const launchFailureMap =
   this.buildLaunchFailureMap(
     logsToCheck,
     uuidGameMap,
     uuidCasinoMap,
+    ppenvCasinoMap,
+    ppenvGameMap,
   );
 
 console.log(
@@ -2379,7 +2690,7 @@ prohibitedJurisdictionLogs =
 
 const uniqueGameIds = [
   ...new Set(
-    fullLogs
+    logsToCheck
       .map((log: any) => {
         const text = [
           log?.message,
@@ -2389,11 +2700,10 @@ const uniqueGameIds = [
           .filter(Boolean)
           .join(' ');
 
-return (
-  text.match(/"gameID":"([^"]+)"/)?.[1] ||
-  text.match(/"operatorGameId":"([^"]+)"/)?.[1]
-);
-
+        return (
+          text.match(/"gameID":"([^"]+)"/)?.[1] ||
+          text.match(/"operatorGameId":"([^"]+)"/)?.[1]
+        );
       })
       .filter(Boolean),
   ),
@@ -2452,20 +2762,30 @@ for (
   });
 }
 
-  const matchedCasinoId =
-    fullLogs.find(
-      (x: any) =>
-        x?.contextMap?.casinoId,
-    )?.contextMap?.casinoId || null;
-
-   
-
-  const matchedCasinoName =
-    fullLogs.find(
-      (x: any) =>
-        x?.contextMap?.casinoName,
-    )?.contextMap?.casinoName || null;
+const casinoIdsFromLogs = [
+  ...new Set(
+    logsToCheck
+      .map(
+        (x: any) =>
+          x?.contextMap?.casinoId,
+      )
+      .filter(Boolean),
+  ),
+];
 let casinos: any[] = [];
+const matchedCasinoId =
+  casinoIdsFromLogs[0] || null;
+
+console.log(
+  'CASINOS FOUND IN LOGS =>',
+  casinoIdsFromLogs,
+);
+
+console.log(
+  'CASINO COUNT =>',
+  casinoIdsFromLogs.length,
+);
+
 
 if (matchedCasinoId) {
   const casinoDetails =
@@ -2480,20 +2800,22 @@ const dbCasino: any =
   'DB CASINO DETAILS:',
   JSON.stringify(dbCasino),
 );
-  casinos = [
-    {
-      casino_id: matchedCasinoId,
-      casino_desc: matchedCasinoName,
+casinos = [
+  {
+    casino_id: matchedCasinoId,
 
-      active_flag: null,
+  casino_desc:
+  dbCasino?.casino_desc || '',
 
-      env:
-        dbCasino?.env || '',
+    active_flag: null,
 
-      ucid:
-        dbCasino?.UCID || '',
-    },
-  ];
+    env:
+      dbCasino?.env || '',
+
+    ucid:
+      dbCasino?.UCID || '',
+  },
+];
 }
 
 
@@ -2679,11 +3001,6 @@ if (casinos.length === 1) {
       casinos[0].casino_id,
     );
 
-    console.log(
-  'FULL PLATFORM CONFIG RESPONSE:',
-  JSON.stringify(platformConfig),
-);
-
 console.log(
   'PLATFORM CONFIG SUCCESS:',
   platformConfig?.success,
@@ -2704,14 +3021,12 @@ console.log(
       casinos[0].casino_id,
     );
 
-  matchedCasinoConfig =
-    platformConfig?.data
-      ?.casinoConfigurations
-      ?.find(
-        (x: any) =>
-          `${x.casinoID}` ===
-          `${targetCasinoId}`,
-      );
+ matchedCasinoConfig =
+  platformConfig?.data?.casinoConfigurations?.find(
+    (x: any) =>
+      Number(x.casinoID) ===
+      Number(targetCasinoId),
+  );
 
       console.log(
   'MATCHED CASINO CONFIG FOUND:',
@@ -3125,12 +3440,21 @@ console.log(
   typeof firstResult?.ucid,
 );
 
-    // Fetch UCID mapping errors once per casino//
-    if (firstResult?.ucid) {
+// Fetch UCID mapping errors once per casino//
+const ucidToSearch =
+  casino?.ucid ||
+  firstResult?.ucid;
+
+console.log(
+  'UCID USED FOR SEARCH:',
+  ucidToSearch,
+);
+
+if (ucidToSearch) {
   try {
     const ucidLogs =
       await this.repository.searchCasinoMappingErrors({
-        ucId: String(firstResult.ucid),
+        ucId: String(ucidToSearch),
         from,
         to,
       });
@@ -3157,7 +3481,6 @@ console.log(
     ];
   }
 }
-
     const uniqueTableInfo =
       tableInfo.filter(
         (
@@ -3351,10 +3674,27 @@ return {
       String(baseFamily),
     ),
 
-  has_launch_failed:
-    launchFailureMap.get(
-      `${casinoId}_${baseFamily}`,
-    ) || false,
+ has_launch_failed: (() => {
+  const key =
+    `${casinoId}_${baseFamily}`;
+
+  const value =
+    launchFailureMap.get(key) ||
+    false;
+
+  console.log(
+    'HAS_LAUNCH_FAILED_CHECK',
+    {
+      key,
+      value,
+      availableKeys: Array.from(
+        launchFailureMap.keys(),
+      ),
+    },
+  );
+
+  return value;
+})(),
 
   base_table_id: baseFamily,
 
