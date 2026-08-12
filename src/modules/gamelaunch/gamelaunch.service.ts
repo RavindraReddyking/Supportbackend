@@ -1,610 +1,771 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+  import {
+    Injectable,
+    NotFoundException,
+  } from '@nestjs/common';
 
-import axios from 'axios';
-import * as crypto from 'crypto';
-import dayjs from 'dayjs';
-import * as https from 'https';
+  import axios from 'axios';
+  import * as crypto from 'crypto';
+  import dayjs from 'dayjs';
+  import * as https from 'https';
 
-import { GameLaunchRepository } from './gamelaunch.repository';
+  import { GameLaunchRepository } from './gamelaunch.repository';
 
-type ParsedGameLaunchUrl = {
-  type: string;
+  type ParsedGameLaunchUrl = {
+    type: string;
 
-  stylename?: string;
+    stylename?: string;
 
-  secureLogin?: string;
+    secureLogin?: string;
 
-  user_id?: string;
+    user_id?: string;
 
-  ppkv?: string;
+    ppkv?: string;
 
-  country?: string;
+    country?: string;
 
-  token?: string;
+    token?: string;
 
-  tc?: string;
+    tc?: string;
 
-  ppToken?: string;
+    ppToken?: string;
 
-  ppCasinoId?: string;
+    ppCasinoId?: string;
 
-  gameid?: string;
+    gameid?: string;
 
-  environmentID?: string;
+    environmentID?: string;
 
-  symbol: string;
-};
+    symbol: string;
+  };
 
-@Injectable()
-export class GameLaunchService {
-  constructor(
-    private readonly repository: GameLaunchRepository,
-  ) {}
+  @Injectable()
+  export class GameLaunchService {
+    constructor(
+      private readonly repository: GameLaunchRepository,
+    ) {}
 
-  private readonly rgsSecret =
-    process.env.RGS_SECRET || '';
+    private readonly rgsSecret =
+      process.env.RGS_SECRET || '';
 
-  private readonly internalApiUrl =
-    process.env.INTERNAL_API_URL ||
-    'http://localhost:4001';
+    private readonly internalApiUrl =
+      process.env.INTERNAL_API_URL ||
+      'http://localhost:4001';
 
-  // =====================================================
-  // HELPERS
-  // =====================================================
+    // =====================================================
+    // HELPERS
+    // =====================================================
 
-private readonly GAME_NAME_OVERRIDE: Record<string, string> = {
-  '007': 'MultiTable Play',
-  '100001': 'CASIBOM Lobby',
-  '100002': 'Gamdom Lobby',
-  '100003': 'OZEL Lobby',
-  '100004': '32ROSU Lobby',
-  '100005': '32RED Lobby',
-  '100006': '1WINLIVE Lobby',
-  '100007': 'RAINBETCLUB Lobby',
-  '100008': 'Sky Bet Lobby',
-  '101': 'Live Casino Lobby',
-  '102': 'Roulette Lobby',
-  '103': 'Blackjack Lobby',
-  '104': 'Baccarat Lobby',
-  '105': 'Gameshows Lobby',
-  '107': 'Sic Bo Lobby',
-  '108': 'Dragon Tiger Lobby',
-  '109': 'Sic Bo & Dragon Tiger',
-  '110': 'D&W',
-  '152': 'Sky Vegas Lobby',
-  '153': 'Betfair Lobby',
-  '154': 'Paddy Power Lobby',
-  '163': 'Exclusives',
-  '165': 'QQGroup Lobby',
-  '166': 'Sky Casino Lobby',
-  '167': 'Queen Casino Lobby',
-  '168': 'Crash Games Lobby',
-  '169': 'Poker Lobby',
-  '170': 'MeritKing Lobby',
-  '171': 'CrystalBet Lobby',
-  '172': 'JetBahis Lobby',
-  '173': 'Localised Lobby',
-  '174': 'MPO Lounge',
-  '175': 'ION Lobby',
-  '176': 'Live Mania Lobby',
-  '177': 'BCGame Lounge',
-  '178': 'BayWin Lobby',
-  '179': 'BetOrSpin Lobby',
-  '180': 'Zlot Lobby',
-  '181': 'Bahis Lobby',
-  '182': 'TipoBet Lobby',
-  '183': 'MarioBet Lobby',
-  '184': 'MatadorBet Lobby',
-  '185': 'Elite Lobby',
-  '186': 'BetTurkey Lobby',
-  '187': 'TarafBet Lobby',
-  '188': 'Betist Lobby',
-  '189': 'OnWin Lobby',
-  '190': 'SahaBet Lobby',
-  '191': 'Stake Lounge Lobby',
-  '192': 'LuckyDreams Lobby',
-  '193': 'LuckyOnes Lobby',
-  '194': 'JustCasino Lobby',
-  '195': 'MatBet Lobby',
-  '196': 'JojoBet Ozel Lobby',
-  '197': 'Mars Lobisi Lobby',
-  '198': 'HoliganBet Lobby',
-  '199': 'Shuffle Lobby',
-};
+  private readonly GAME_NAME_OVERRIDE: Record<string, string> = {
+    '007': 'MultiTable Play',
+    '100001': 'CASIBOM Lobby',
+    '100002': 'Gamdom Lobby',
+    '100003': 'OZEL Lobby',
+    '100004': '32ROSU Lobby',
+    '100005': '32RED Lobby',
+    '100006': '1WINLIVE Lobby',
+    '100007': 'RAINBETCLUB Lobby',
+    '100008': 'Sky Bet Lobby',
+    '101': 'Live Casino Lobby',
+    '102': 'Roulette Lobby',
+    '103': 'Blackjack Lobby',
+    '104': 'Baccarat Lobby',
+    '105': 'Gameshows Lobby',
+    '107': 'Sic Bo Lobby',
+    '108': 'Dragon Tiger Lobby',
+    '109': 'Sic Bo & Dragon Tiger',
+    '110': 'D&W',
+    '152': 'Sky Vegas Lobby',
+    '153': 'Betfair Lobby',
+    '154': 'Paddy Power Lobby',
+    '163': 'Exclusives',
+    '165': 'QQGroup Lobby',
+    '166': 'Sky Casino Lobby',
+    '167': 'Queen Casino Lobby',
+    '168': 'Crash Games Lobby',
+    '169': 'Poker Lobby',
+    '170': 'MeritKing Lobby',
+    '171': 'CrystalBet Lobby',
+    '172': 'JetBahis Lobby',
+    '173': 'Localised Lobby',
+    '174': 'MPO Lounge',
+    '175': 'ION Lobby',
+    '176': 'Live Mania Lobby',
+    '177': 'BCGame Lounge',
+    '178': 'BayWin Lobby',
+    '179': 'BetOrSpin Lobby',
+    '180': 'Zlot Lobby',
+    '181': 'Bahis Lobby',
+    '182': 'TipoBet Lobby',
+    '183': 'MarioBet Lobby',
+    '184': 'MatadorBet Lobby',
+    '185': 'Elite Lobby',
+    '186': 'BetTurkey Lobby',
+    '187': 'TarafBet Lobby',
+    '188': 'Betist Lobby',
+    '189': 'OnWin Lobby',
+    '190': 'SahaBet Lobby',
+    '191': 'Stake Lounge Lobby',
+    '192': 'LuckyDreams Lobby',
+    '193': 'LuckyOnes Lobby',
+    '194': 'JustCasino Lobby',
+    '195': 'MatBet Lobby',
+    '196': 'JojoBet Ozel Lobby',
+    '197': 'Mars Lobisi Lobby',
+    '198': 'HoliganBet Lobby',
+    '199': 'Shuffle Lobby',
+  };
 
-private getGameDisplayName(
-  gameId: string,
-  gameName?: string,
-): string {
-  return (
-    this.GAME_NAME_OVERRIDE[gameId] ||
-    gameName ||
-    gameId
-  );
-}
-
-
-private getApiEnv(env: string): string {
-  switch (env?.trim()?.toLowerCase()) {
-    case 'dk':
-      return 'dk0';
-
-    case 'tw1':
-      return 'sg19';
-
-         case 'gi':
-      return 'gi0';
-
-    default:
-      return env;
+  private getGameDisplayName(
+    gameId: string,
+    gameName?: string,
+  ): string {
+    return (
+      this.GAME_NAME_OVERRIDE[gameId] ||
+      gameName ||
+      gameId
+    );
   }
-}
 
 
-//UUID missing logs mapping//
-private buildPpenvCasinoMap(
-  logs: any[],
-) {
-  const ppenvCasinoMap =
-    new Map<string, string>();
+  private getApiEnv(env: string): string {
+    switch (env?.trim()?.toLowerCase()) {
+      case 'dk':
+        return 'dk0';
 
-  for (const log of logs) {
-    const ppenv =
-      log?.contextMap?.ppenv;
+      case 'tw1':
+        return 'sg19';
 
-    const casinoId =
-      log?.contextMap?.casinoId;
+          case 'gi':
+        return 'gi0';
 
-    if (
-      ppenv &&
-      casinoId &&
-      !ppenvCasinoMap.has(ppenv)
-    ) {
-      ppenvCasinoMap.set(
-        String(ppenv),
-        String(casinoId),
-      );
+      default:
+        return env;
     }
   }
 
-  return ppenvCasinoMap;
-}
 
-//Platfrom config mapping helper//
-private getBaseApiUrl(apiEnv: string): string {
-  const legacyEnvs = ['sga15', 'in4'];
-
-  if (
-    legacyEnvs.includes(
-      apiEnv.toLowerCase(),
-    )
+  //UUID missing logs mapping//
+  private buildPpenvCasinoMap(
+    logs: any[],
   ) {
-    return `https://api-${apiEnv}.ppgames.net`;
+    const ppenvCasinoMap =
+      new Map<string, string>();
+
+    for (const log of logs) {
+      const ppenv =
+        log?.contextMap?.ppenv;
+
+      const casinoId =
+        log?.contextMap?.casinoId;
+
+      if (
+        ppenv &&
+        casinoId &&
+        !ppenvCasinoMap.has(ppenv)
+      ) {
+        ppenvCasinoMap.set(
+          String(ppenv),
+          String(casinoId),
+        );
+      }
+    }
+
+    return ppenvCasinoMap;
   }
 
-  return `https://api-rgs-${apiEnv}.ppgames.net`;
-}
+  //Platfrom config mapping helper//
 
-private getFallbackApiUrl(apiEnv: string): string {
-  const legacyEnvs = ['sga15', 'in4'];
+  private getBaseApiUrl(apiEnv: string): string {
 
-  if (
-    legacyEnvs.includes(
-      apiEnv.toLowerCase(),
-    )
-  ) {
-    return `https://api-${apiEnv}.pragmaticplay.net`;
+    if (
+      process.env.NODE_ENV?.toLowerCase() === 'prelive'
+    ) {
+      return 'http://api.prerelease-env.biz';
+    }
+
+    const legacyEnvs = ['sga15', 'in4'];
+
+    if (
+      legacyEnvs.includes(
+        apiEnv.toLowerCase(),
+      )
+    ) {
+      return `https://api-${apiEnv}.ppgames.net`;
+    }
+
+    return `https://api-rgs-${apiEnv}.ppgames.net`;
   }
 
-  return `https://api-rgs-${apiEnv}.pragmaticplay.net`;
-}
+  private getFallbackApiUrl(apiEnv: string): string {
 
-private extractCasinoId(
-  casinoId: string,
-): string {
-  return String(
-    Number(
-      casinoId.replace(/\D/g, ''),
-    ),
-  );
-}
+    if (
+      process.env.NODE_ENV?.toLowerCase() === 'prelive'
+    ) {
+      return 'http://api.prerelease-env.biz';
+    }
 
-  private extractBaseTable(
-    symbol: string,
-  ): string | null {
-    const match =
-      symbol.match(/^\d+/);
+    const legacyEnvs = ['sga15', 'in4'];
 
-    if (!match) {
+    if (
+      legacyEnvs.includes(
+        apiEnv.toLowerCase(),
+      )
+    ) {
+      return `https://api-${apiEnv}.pragmaticplay.net`;
+    }
+
+    return `https://api-rgs-${apiEnv}.pragmaticplay.net`;
+  }
+
+  private extractCasinoId(
+    casinoId: string,
+  ): string {
+    return String(
+      Number(
+        casinoId.replace(/\D/g, ''),
+      ),
+    );
+  }
+
+    private extractBaseTable(
+      symbol: string,
+    ): string | null {
+      const match =
+        symbol.match(/^\d+/);
+
+      if (!match) {
+        return null;
+      }
+
+      const baseTable =
+        match[0];
+
+      if (baseTable !== symbol) {
+        return baseTable;
+      }
+
       return null;
     }
 
-    const baseTable =
-      match[0];
-
-    if (baseTable !== symbol) {
-      return baseTable;
-    }
-
-    return null;
+    
+  private isLobbyGame(gameName?: string): boolean {
+    return (
+      gameName?.toLowerCase().includes('lobby') ||
+      false
+    );
   }
 
+  private extractErrorCodeFromText(
+    text: string,
+  ): number | null {
+    const match =
+      text.match(/"error"\s*:\s*(\d+)/) ||
+      text.match(/\berror\s*[:=]\s*(\d+)/i);
+
+    return match
+      ? Number(match[1])
+      : null;
+  }
+
+
+  private has521Error(
+    logs: any[],
+  ): boolean {
+    return logs.some(
+      (log: any) => {
+        const text = [
+          log?.message,
+          log?.responseLog,
+          log?.error,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return (
+          text.includes('"error":521') ||
+          text.includes(
+            'Unsupported jurisdiction',
+          )
+        );
+      },
+    );
+  }
+
+  //Adding config helper//
+  private populatePlatformConfigInfo(
+    matchedCasinoConfig: any,
+  ) {
+    const jurisdictionSettings =
+      matchedCasinoConfig?.configuration
+        ?.jurisdictionSettings;
+
+    const countrySettings =
+      matchedCasinoConfig?.configuration
+        ?.countrySettings;
+
+    const regionSettings =
+      matchedCasinoConfig?.configuration
+        ?.regionSettings;
+  return {
+    casino_jurisdiction:
+      jurisdictionSettings?.casinoJurisdiction?.trim()
+        ? jurisdictionSettings.casinoJurisdiction
+        : 'Allowed to all',
+
+    jurisdiction_priority:
+      jurisdictionSettings?.jurisdictionPriority?.trim()
+        ? jurisdictionSettings.jurisdictionPriority
+        : 'Allowed to all',
+
+    accessible_jurisdictions:
+      jurisdictionSettings?.accessibleJurisdictions?.trim()
+        ? jurisdictionSettings.accessibleJurisdictions
+        : 'Allowed to all',
+
+    casino_blocked_countries:
+      countrySettings?.casinoBlockedCountries?.trim()
+        ? countrySettings.casinoBlockedCountries
+        : 'N/A',
+
+    unblocked_countries:
+      countrySettings?.unblockedCountries?.trim()
+        ? countrySettings.unblockedCountries
+        : 'N/A',
+
+    casino_blocked_regions:
+      regionSettings?.casinoBlockedRegions?.trim()
+        ? regionSettings.casinoBlockedRegions
+        : 'N/A',
+
+    unblocked_regions:
+      regionSettings?.unblockedRegions?.trim()
+        ? regionSettings.unblockedRegions
+        : 'N/A',
+  };
+  }
+
+
+  private analyze521(
+    playerCountry: string,
+    playerRegion: string,
+    jurisdictionSettings: any,
+    countrySettings: any,
+    regionSettings: any,
+  ) {
+    const blockedCountries =
+      String(
+        countrySettings?.casinoBlockedCountries ||
+        '',
+      )
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+        const unblockedCountries =
+    String(
+      countrySettings?.unblockedCountries ||
+      '',
+    )
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+      const regulatedMarkets = [
+    'AB', // Alberta
+    'AQ', // Alberta
+    'GG', // Alderney
+    'X3', // Argentina Other
+    'AT', // Austria
+    'BS', // Bahamas
+    'BY', // Belarus
+    'BE', // Belgium
+    'BR', // Brazil
+    'X1', // Buenos Aires City
+    'X2', // Buenos Aires Province
+    'BG', // Bulgaria
+    'CO', // Colombia
+    'CZ', // Czech Republic
+    'DK', // Denmark
+    'EE', // Estonia
+    'GE', // Georgia
+    'DE', // Germany
+    'GR', // Greece
+    'HU', // Hungary
+    'IE', // Ireland
+    'IM', // Isle of Man
+    'IT', // Italy
+    'LV', // Latvia
+    'LT', // Lithuania
+    'MT', // Malta
+    'MX', // Mexico
+    'NO', // Norway
+    'ON', // Ontario
+    'PR', // Parana (Brazil)
+    'PE', // Peru
+    'PH', // Philippines
+    'PT', // Portugal
+    'RO', // Romania
+    'RS', // Serbia
+    'SK', // Slovakia
+    'SI', // Slovenia
+    'ZA', // South Africa
+    'ES', // Spain
+    'SE', // Sweden
+    'CH', // Switzerland
+    'NL', // Netherlands
+    'UA', // Ukraine
+    'UK', // United Kingdom
+    'GB'
+  ];
+
+  const geoBlockedCountries = [
+    'US',
+    'FR',
+    'IL',
+    'TW',
+    'AU',
+    'KP',
+    'IN',
+    'SG',
+    'IR',
+    'AE',
+  ];
+
+    const blockedRegions =
+      String(
+        regionSettings?.casinoBlockedRegions ||
+        '',
+      )
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+        const unblockedRegions =
+    String(
+      regionSettings?.unblockedRegions ||
+      '',
+    )
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+  const accessibleJurisdictions =
+    String(
+      jurisdictionSettings?.accessibleJurisdictions ||
+      '',
+    )
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+  const casinoJurisdiction =
+    String(
+      jurisdictionSettings?.casinoJurisdiction ||
+      '',
+    ).trim();
+  const jurisdictionMatched =
+    casinoJurisdiction &&
+    casinoJurisdiction !== '99' &&
+    casinoJurisdiction.toUpperCase() !== 'ALL' &&
+    (
+      playerCountry === casinoJurisdiction ||
+      playerRegion === casinoJurisdiction
+    );
+
+    if (
+      blockedCountries.includes(
+        playerCountry,
+      )
+    ) {
+      return {
+        category:
+          'CASINO_COUNTRY_BLOCK',
+
+        recommendation:
+          'Player country exists in casino blocked countries.',
+      };
+    }
+
+    if (
+      blockedRegions.includes(
+        playerRegion,
+      )
+    ) {
+      return {
+        category:
+          'CASINO_REGION_BLOCK',
+
+        recommendation:
+          'Player region exists in casino blocked regions.',
+      };
+    }
   
-private isLobbyGame(gameName?: string): boolean {
-  return (
-    gameName?.toLowerCase().includes('lobby') ||
-    false
-  );
-}
 
-private extractErrorCodeFromText(
-  text: string,
-): number | null {
-  const match =
-    text.match(/"error"\s*:\s*(\d+)/) ||
-    text.match(/\berror\s*[:=]\s*(\d+)/i);
-
-  return match
-    ? Number(match[1])
-    : null;
-}
-
-
-private has521Error(
-  logs: any[],
-): boolean {
-  return logs.some(
-    (log: any) => {
-      const text = [
-        log?.message,
-        log?.responseLog,
-        log?.error,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      return (
-        text.includes('"error":521') ||
-        text.includes(
-          'Unsupported jurisdiction',
-        )
-      );
-    },
-  );
-}
-
-//Adding config helper//
-private populatePlatformConfigInfo(
-  matchedCasinoConfig: any,
-) {
-  const jurisdictionSettings =
-    matchedCasinoConfig?.configuration
-      ?.jurisdictionSettings;
-
-  const countrySettings =
-    matchedCasinoConfig?.configuration
-      ?.countrySettings;
-
-  const regionSettings =
-    matchedCasinoConfig?.configuration
-      ?.regionSettings;
-return {
-  casino_jurisdiction:
-    jurisdictionSettings?.casinoJurisdiction?.trim()
-      ? jurisdictionSettings.casinoJurisdiction
-      : 'Allowed to all',
-
-  jurisdiction_priority:
-    jurisdictionSettings?.jurisdictionPriority?.trim()
-      ? jurisdictionSettings.jurisdictionPriority
-      : 'Allowed to all',
-
-  accessible_jurisdictions:
-    jurisdictionSettings?.accessibleJurisdictions?.trim()
-      ? jurisdictionSettings.accessibleJurisdictions
-      : 'Allowed to all',
-
-  casino_blocked_countries:
-    countrySettings?.casinoBlockedCountries?.trim()
-      ? countrySettings.casinoBlockedCountries
-      : 'N/A',
-
-  unblocked_countries:
-    countrySettings?.unblockedCountries?.trim()
-      ? countrySettings.unblockedCountries
-      : 'N/A',
-
-  casino_blocked_regions:
-    regionSettings?.casinoBlockedRegions?.trim()
-      ? regionSettings.casinoBlockedRegions
-      : 'N/A',
-
-  unblocked_regions:
-    regionSettings?.unblockedRegions?.trim()
-      ? regionSettings.unblockedRegions
-      : 'N/A',
-};
-}
-
-
-private analyze521(
-  playerCountry: string,
-  playerRegion: string,
-  jurisdictionSettings: any,
-  countrySettings: any,
-  regionSettings: any,
-) {
-  const blockedCountries =
-    String(
-      countrySettings?.casinoBlockedCountries ||
-      '',
-    )
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-      const unblockedCountries =
-  String(
-    countrySettings?.unblockedCountries ||
-    '',
-  )
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean);
-    const regulatedMarkets = [
-  'AB', // Alberta
-  'AQ', // Alberta
-  'GG', // Alderney
-  'X3', // Argentina Other
-  'AT', // Austria
-  'BS', // Bahamas
-  'BY', // Belarus
-  'BE', // Belgium
-  'BR', // Brazil
-  'X1', // Buenos Aires City
-  'X2', // Buenos Aires Province
-  'BG', // Bulgaria
-  'CO', // Colombia
-  'CZ', // Czech Republic
-  'DK', // Denmark
-  'EE', // Estonia
-  'GE', // Georgia
-  'DE', // Germany
-  'GR', // Greece
-  'HU', // Hungary
-  'IE', // Ireland
-  'IM', // Isle of Man
-  'IT', // Italy
-  'LV', // Latvia
-  'LT', // Lithuania
-  'MT', // Malta
-  'MX', // Mexico
-  'NO', // Norway
-  'ON', // Ontario
-  'PR', // Parana (Brazil)
-  'PE', // Peru
-  'PH', // Philippines
-  'PT', // Portugal
-  'RO', // Romania
-  'RS', // Serbia
-  'SK', // Slovakia
-  'SI', // Slovenia
-  'ZA', // South Africa
-  'ES', // Spain
-  'SE', // Sweden
-  'CH', // Switzerland
-  'NL', // Netherlands
-  'UA', // Ukraine
-  'UK', // United Kingdom
-  'GB'
-];
-
-const geoBlockedCountries = [
-  'US',
-  'FR',
-  'IL',
-  'TW',
-  'AU',
-  'KP',
-  'IN',
-  'SG',
-  'IR',
-  'AE',
-];
-
-  const blockedRegions =
-    String(
-      regionSettings?.casinoBlockedRegions ||
-      '',
-    )
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-
-      const unblockedRegions =
-  String(
-    regionSettings?.unblockedRegions ||
-    '',
-  )
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-const accessibleJurisdictions =
-  String(
-    jurisdictionSettings?.accessibleJurisdictions ||
-    '',
-  )
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-const casinoJurisdiction =
-  String(
-    jurisdictionSettings?.casinoJurisdiction ||
-    '',
-  ).trim();
-const jurisdictionMatched =
-  casinoJurisdiction &&
-  casinoJurisdiction !== '99' &&
-  casinoJurisdiction.toUpperCase() !== 'ALL' &&
-  (
-    playerCountry === casinoJurisdiction ||
-    playerRegion === casinoJurisdiction
-  );
+  // =====================================================
+  // CANADA REGION RESTRICTIONS
+  // ON and AB must be explicitly present in unblockedRegions
+  // =====================================================
 
   if (
-    blockedCountries.includes(
-      playerCountry,
-    )
+    playerCountry === 'CA' &&
+    ['ON', 'AB'].includes(playerRegion) &&
+    !unblockedRegions.includes(playerRegion)
   ) {
     return {
       category:
-        'CASINO_COUNTRY_BLOCK',
+        'RESTRICTED_REGION_BLOCK',
 
       recommendation:
-        'Player country exists in casino blocked countries.',
+        `${playerCountry}/${playerRegion} must be explicitly present in unblockedRegions.`,
     };
   }
 
+  const isRegulatedMarket =
+    regulatedMarkets.includes(
+      playerCountry,
+    ) ||
+    regulatedMarkets.includes(
+      playerRegion,
+    );
+
+  const explicitlyAllowed =
+    accessibleJurisdictions.includes(
+      playerCountry,
+    ) ||
+    accessibleJurisdictions.includes(
+      playerRegion,
+    ) ||
+    unblockedCountries.includes(
+      playerCountry,
+    ) ||
+    unblockedRegions.includes(
+      playerRegion,
+    );
+    if (
+    !jurisdictionMatched &&
+    isRegulatedMarket &&
+    !explicitlyAllowed
+  )
+  {
+    return {
+      category:
+        'REGULATED_MARKET_BLOCK',
+
+      recommendation:
+        `${playerCountry}/${playerRegion} is a regulated market and is not allowed in accessible/unblocked settings.`,
+    };
+  }
+
+  console.log(
+    'PLAYER COUNTRY:',
+    JSON.stringify(playerCountry),
+  );
+
+  console.log(
+    'UNBLOCKED COUNTRIES:',
+    JSON.stringify(unblockedCountries),
+  );
+
+  console.log(
+    'GEO BLOCKED:',
+    geoBlockedCountries.includes(
+      playerCountry,
+    ),
+  );
   if (
-    blockedRegions.includes(
+    geoBlockedCountries.includes(
+      playerCountry,
+    ) &&
+    !unblockedCountries.includes(
+      playerCountry,
+    ) &&
+    !unblockedRegions.includes(
       playerRegion,
     )
   ) {
     return {
       category:
-        'CASINO_REGION_BLOCK',
+        'PLATFORM_GEOIP_BLOCK',
 
       recommendation:
-        'Player region exists in casino blocked regions.',
+        `${playerCountry}/${playerRegion} is blocked by default platform GeoIP restrictions.`,
     };
   }
- 
-
-// =====================================================
-// CANADA REGION RESTRICTIONS
-// ON and AB must be explicitly present in unblockedRegions
-// =====================================================
-
-if (
-  playerCountry === 'CA' &&
-  ['ON', 'AB'].includes(playerRegion) &&
-  !unblockedRegions.includes(playerRegion)
-) {
-  return {
-    category:
-      'RESTRICTED_REGION_BLOCK',
-
-    recommendation:
-      `${playerCountry}/${playerRegion} must be explicitly present in unblockedRegions.`,
-  };
-}
-
-const isRegulatedMarket =
-  regulatedMarkets.includes(
-    playerCountry,
-  ) ||
-  regulatedMarkets.includes(
-    playerRegion,
-  );
-
-const explicitlyAllowed =
-  accessibleJurisdictions.includes(
-    playerCountry,
-  ) ||
-  accessibleJurisdictions.includes(
-    playerRegion,
-  ) ||
-  unblockedCountries.includes(
-    playerCountry,
-  ) ||
-  unblockedRegions.includes(
-    playerRegion,
-  );
   if (
-  !jurisdictionMatched &&
-  isRegulatedMarket &&
-  !explicitlyAllowed
-)
-{
-  return {
-    category:
-      'REGULATED_MARKET_BLOCK',
+    accessibleJurisdictions.length > 0 &&
+    !explicitlyAllowed
+  ) {
+    return {
+      category:
+        'ACCESSIBLE_JURISDICTION_BLOCK',
 
-    recommendation:
-      `${playerCountry}/${playerRegion} is a regulated market and is not allowed in accessible/unblocked settings.`,
-  };
-}
+      recommendation:
+        'Player jurisdiction is not present in accessible/unblocked settings.',
+    };
+  }
 
-console.log(
-  'PLAYER COUNTRY:',
-  JSON.stringify(playerCountry),
-);
+    return {
+      category:
+        'UNKNOWN_521',
 
-console.log(
-  'UNBLOCKED COUNTRIES:',
-  JSON.stringify(unblockedCountries),
-);
-
-console.log(
-  'GEO BLOCKED:',
-  geoBlockedCountries.includes(
-    playerCountry,
-  ),
-);
-if (
-  geoBlockedCountries.includes(
-    playerCountry,
-  ) &&
-  !unblockedCountries.includes(
-    playerCountry,
-  ) &&
-  !unblockedRegions.includes(
-    playerRegion,
-  )
-) {
-  return {
-    category:
-      'PLATFORM_GEOIP_BLOCK',
-
-    recommendation:
-      `${playerCountry}/${playerRegion} is blocked by default platform GeoIP restrictions.`,
-  };
-}
-if (
-  accessibleJurisdictions.length > 0 &&
-  !explicitlyAllowed
-) {
-  return {
-    category:
-      'ACCESSIBLE_JURISDICTION_BLOCK',
-
-    recommendation:
-      'Player jurisdiction is not present in accessible/unblocked settings.',
-  };
-}
-
-  return {
-    category:
-      'UNKNOWN_521',
-
-    recommendation:
-      'No blocking condition was identified in platform configuration. Please contact the Platform team for further RCA',
-  };
-}
+      recommendation:
+        'No blocking condition was identified in platform configuration. Please contact the Platform team for further RCA',
+    };
+  }
 
 
 
 
-  // =====================================================
-  // PLATFORM ENABLED GAMES
-  // =====================================================
+    // =====================================================
+    // PLATFORM ENABLED GAMES
+    // =====================================================
 
-  async getCasinoGames(
+    async getCasinoGames(
+      casinoId: string,
+    ) {
+      const casinoData: any =
+        await this.repository.getCasinoDetails(
+          casinoId,
+        );
+
+      const data =
+        casinoData?.recordset?.[0];
+
+      if (!data) {
+        throw new NotFoundException(
+          'Casino not found',
+        );
+      }
+
+      const login = String(
+        data.login,
+      ).trim();
+
+      const env = String(
+        data.env,
+      ).trim();
+      const apiEnv = this.getApiEnv(env);
+
+      const UCID = data.UCID;
+
+      const finalCasinoId =
+        this.extractCasinoId(casinoId);
+
+      const path =
+        `/RGSGateway/GameAPI/getCasinoGames/${finalCasinoId}/`;
+
+      let url =
+    `${this.getBaseApiUrl(apiEnv)}${path}`;
+
+      const timestamp = Math.round(
+        new Date().getTime() / 1000,
+      ).toString();
+
+      const pathForHmac =
+        path.toUpperCase();
+
+      const strForHmac =
+        `GET-${timestamp}-${pathForHmac}`;
+
+      const hmacMd5 = crypto
+        .createHmac(
+          'md5',
+          this.rgsSecret,
+        )
+        .update(strForHmac)
+        .digest('hex');
+
+      const rgsHash = Buffer.from(
+        hmacMd5,
+        'utf8',
+      ).toString('base64');
+
+      const headers = {
+        'Content-Type':
+          'application/x-www-form-urlencoded',
+
+        authentication:
+          `hmac ${login}:${rgsHash}`,
+
+        timestamp,
+      };
+
+      try {
+        let response: any;
+  try {
+    response =
+      await axios.get(
+        url,
+        {
+          headers,
+        },
+      );
+
+    // Fallback if ppgames returns empty response
+    if (
+      !response.data ||
+      `${response.data}`.trim() === ''
+    ) {
+      console.log(
+        'PPGAMES returned empty response, falling back to pragmaticplay.net',
+      );
+
+  url =
+    `${this.getFallbackApiUrl(apiEnv)}${path}`;
+
+      response =
+        await axios.get(
+          url,
+          {
+            headers,
+          },
+        );
+    }
+  } catch (error: any) {
+    console.log(
+      'PPGAMES failed:',
+      error.message,
+    );
+
+  url =
+    `${this.getFallbackApiUrl(apiEnv)}${path}`;
+
+    console.log(
+      'Trying fallback URL:',
+      url,
+    );
+
+    response =
+      await axios.get(
+        url,
+        {
+          headers,
+        },
+      );
+  }
+  console.log('REQUESTED URL:', url);
+
+        return {
+          success: true,
+          requestedUrl: url,
+          casinoId: finalCasinoId,
+          env,
+          UCID,
+          data: response.data,
+        };
+      } catch (error: any) {
+        return {
+          success: false,
+          message: error.message,
+          response:
+            error.response?.data ||
+            null,
+        };
+      }
+    }
+
+    //Platfrom Config Fetch//
+
+    async getCasinoPlatformConfig(
     casinoId: string,
   ) {
     const casinoData: any =
@@ -632,14 +793,11 @@ if (
 
     const UCID = data.UCID;
 
-    const finalCasinoId =
-      this.extractCasinoId(casinoId);
-
     const path =
-      `/RGSGateway/GameAPI/getCasinoGames/${finalCasinoId}/`;
+      '/RGSGateway/CommonAPI/casino/configurations';
 
-    let url =
-  `${this.getBaseApiUrl(apiEnv)}${path}`;
+  let url =
+    `${this.getBaseApiUrl(apiEnv)}${path}`;
 
     const timestamp = Math.round(
       new Date().getTime() / 1000,
@@ -649,7 +807,7 @@ if (
       path.toUpperCase();
 
     const strForHmac =
-      `GET-${timestamp}-${pathForHmac}`;
+      `POST-${timestamp}-${pathForHmac}`;
 
     const hmacMd5 = crypto
       .createHmac(
@@ -676,63 +834,68 @@ if (
 
     try {
       let response: any;
-try {
-  response =
-    await axios.get(
-      url,
-      {
-        headers,
-      },
-    );
 
-  // Fallback if ppgames returns empty response
-  if (
-    !response.data ||
-    `${response.data}`.trim() === ''
-  ) {
+      try {
+        response =
+          await axios.post(
+            url,
+            {},
+            {
+              headers,
+            },
+          );
+
+        if (
+          !response.data ||
+          `${response.data}`.trim() === ''
+        ) {
+          console.log(
+            'PPGAMES returned empty response, falling back to pragmaticplay.net',
+          );
+
+        url =
+    `${this.getFallbackApiUrl(apiEnv)}${path}`;
+
+          response =
+            await axios.post(
+              url,
+              {},
+              {
+                headers,
+              },
+            );
+        }
+      } catch (error: any) {
     console.log(
-      'PPGAMES returned empty response, falling back to pragmaticplay.net',
+      'PPGAMES failed:',
+      error.message,
     );
 
-url =
-  `${this.getFallbackApiUrl(apiEnv)}${path}`;
+    url =
+      `${this.getFallbackApiUrl(apiEnv)}${path}`;
+
+    console.log(
+      'Trying fallback URL:',
+      url,
+    );
 
     response =
-      await axios.get(
+      await axios.post(
         url,
+        {},
         {
           headers,
         },
       );
   }
-} catch (error: any) {
-  console.log(
-    'PPGAMES failed:',
-    error.message,
-  );
-
- url =
-  `${this.getFallbackApiUrl(apiEnv)}${path}`;
-
-  console.log(
-    'Trying fallback URL:',
-    url,
-  );
-
-  response =
-    await axios.get(
-      url,
-      {
-        headers,
-      },
-    );
-}
-console.log('REQUESTED URL:', url);
+      console.log(
+        'PLATFORM CONFIG URL:',
+        url,
+      );
 
       return {
         success: true,
         requestedUrl: url,
-        casinoId: finalCasinoId,
         env,
         UCID,
         data: response.data,
@@ -748,376 +911,214 @@ console.log('REQUESTED URL:', url);
     }
   }
 
-  //Platfrom Config Fetch//
-
-  async getCasinoPlatformConfig(
-  casinoId: string,
-) {
-  const casinoData: any =
-    await this.repository.getCasinoDetails(
-      casinoId,
-    );
-
-  const data =
-    casinoData?.recordset?.[0];
-
-  if (!data) {
-    throw new NotFoundException(
-      'Casino not found',
-    );
-  }
-
-  const login = String(
-    data.login,
-  ).trim();
-
-  const env = String(
-    data.env,
-  ).trim();
-  const apiEnv = this.getApiEnv(env);
-
-  const UCID = data.UCID;
-
-  const path =
-    '/RGSGateway/CommonAPI/casino/configurations';
-
- let url =
-  `${this.getBaseApiUrl(apiEnv)}${path}`;
-
-  const timestamp = Math.round(
-    new Date().getTime() / 1000,
-  ).toString();
-
-  const pathForHmac =
-    path.toUpperCase();
-
-  const strForHmac =
-    `POST-${timestamp}-${pathForHmac}`;
-
-  const hmacMd5 = crypto
-    .createHmac(
-      'md5',
-      this.rgsSecret,
-    )
-    .update(strForHmac)
-    .digest('hex');
-
-  const rgsHash = Buffer.from(
-    hmacMd5,
-    'utf8',
-  ).toString('base64');
-
-  const headers = {
-    'Content-Type':
-      'application/x-www-form-urlencoded',
-
-    authentication:
-      `hmac ${login}:${rgsHash}`,
-
-    timestamp,
-  };
-
-  try {
-    let response: any;
-
+    // =====================================================
+    // LC ENABLED TABLES
+    // =====================================================
+  async getLcEnabledTables(
+    casinoId: string,
+    cookies: string,
+  ) {
     try {
-      response =
-        await axios.post(
-          url,
-          {},
+      const response =
+        await axios.get(
+          `${this.internalApiUrl}/api/lc-enabled-tables`,
           {
-            headers,
+            params: {
+              casinoid:
+                casinoId,
+            },
+
+            headers: cookies
+              ? {
+                  cookie:
+                    cookies,
+                }
+              : {},
+
+            httpsAgent:
+              new https.Agent({
+                rejectUnauthorized:
+                  false,
+              }),
+
+            timeout: 45000,
           },
         );
+
+      return (
+        response?.data?.data ||
+        []
+      );
+    } catch (error: any) {
+      return [];
+    }
+  }
+
+  //Common Helper//
+  private buildSessionMaps(logs: any[]) {
+    const uuidGameMap =
+      new Map<string, string>();
+
+    const uuidCasinoMap =
+      new Map<string, string>();
+
+    const ppenvGameMap =
+      new Map<string, Set<string>>();
+
+    for (const log of logs) {
+      const uuid =
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'];
+
+      const ppenv =
+        log?.contextMap?.ppenv;
+
+      if (!uuid && !ppenv) {
+        continue;
+      }
+
+      const text = [
+        log?.message,
+        log?.requestLog,
+        log?.responseLog,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const gameId =
+        text.match(/gameid=(\d+)/i)?.[1] ||
+        text.match(/"gameID":"([^"]+)"/)?.[1] ||
+        text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+
+      if (ppenv && gameId) {
+        if (!ppenvGameMap.has(ppenv)) {
+          ppenvGameMap.set(
+            ppenv,
+            new Set<string>(),
+          );
+        }
+
+        ppenvGameMap
+          .get(ppenv)
+          ?.add(String(gameId));
+      }
+
+      const casinoId =
+        log?.contextMap?.casinoId;
 
       if (
-        !response.data ||
-        `${response.data}`.trim() === ''
+        uuid &&
+        gameId &&
+        !uuidGameMap.has(uuid)
       ) {
-        console.log(
-          'PPGAMES returned empty response, falling back to pragmaticplay.net',
+        uuidGameMap.set(
+          uuid,
+          String(gameId),
         );
-
-       url =
-  `${this.getFallbackApiUrl(apiEnv)}${path}`;
-
-        response =
-          await axios.post(
-            url,
-            {},
-            {
-              headers,
-            },
-          );
       }
-    } catch (error: any) {
-  console.log(
-    'PPGAMES failed:',
-    error.message,
-  );
 
-  url =
-    `${this.getFallbackApiUrl(apiEnv)}${path}`;
-
-  console.log(
-    'Trying fallback URL:',
-    url,
-  );
-
-  response =
-    await axios.post(
-      url,
-      {},
-      {
-        headers,
-      },
-    );
-}
-    console.log(
-      'PLATFORM CONFIG URL:',
-      url,
-    );
-
-    return {
-      success: true,
-      requestedUrl: url,
-      env,
-      UCID,
-      data: response.data,
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message,
-      response:
-        error.response?.data ||
-        null,
-    };
-  }
-}
-
-  // =====================================================
-  // LC ENABLED TABLES
-  // =====================================================
-async getLcEnabledTables(
-  casinoId: string,
-  cookies: string,
-) {
-  try {
-    const response =
-      await axios.get(
-        `${this.internalApiUrl}/api/lc-enabled-tables`,
-        {
-          params: {
-            casinoid:
-              casinoId,
-          },
-
-          headers: cookies
-            ? {
-                cookie:
-                  cookies,
-              }
-            : {},
-
-          httpsAgent:
-            new https.Agent({
-              rejectUnauthorized:
-                false,
-            }),
-
-          timeout: 45000,
-        },
-      );
-
-    return (
-      response?.data?.data ||
-      []
-    );
-  } catch (error: any) {
-    return [];
-  }
-}
-
-//Common Helper//
-private buildSessionMaps(logs: any[]) {
-  const uuidGameMap =
-    new Map<string, string>();
-
-  const uuidCasinoMap =
-    new Map<string, string>();
-
-  const ppenvGameMap =
-    new Map<string, Set<string>>();
-
-  for (const log of logs) {
-    const uuid =
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'];
-
-    const ppenv =
-      log?.contextMap?.ppenv;
-
-    if (!uuid && !ppenv) {
-      continue;
+      if (
+        uuid &&
+        casinoId &&
+        !uuidCasinoMap.has(uuid)
+      ) {
+        uuidCasinoMap.set(
+          uuid,
+          String(casinoId),
+        );
+      }
     }
+
+    return {
+      uuidGameMap,
+      uuidCasinoMap,
+      ppenvGameMap,
+    };
+  }
+  ////launch fail mapaping//
+  private buildLaunchFailureMap(
+    logs: any[],
+    uuidGameMap: Map<string, string>,
+    uuidCasinoMap: Map<string, string>,
+    ppenvCasinoMap: Map<string, string>,
+    ppenvGameMap: Map<string, Set<string>>,
+  )
+
+  {
+    const launchFailureMap =
+      new Map<string, boolean>();
+  for (const log of logs) {
+
+    console.log(
+      'PROCESSING LOG'
+    );
 
     const text = [
       log?.message,
       log?.requestLog,
       log?.responseLog,
+      log?.error,
     ]
       .filter(Boolean)
       .join(' ');
 
-    const gameId =
-      text.match(/gameid=(\d+)/i)?.[1] ||
-      text.match(/"gameID":"([^"]+)"/)?.[1] ||
-      text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+      // Only UserAPI failures
+    const isUserApi =
+    text.includes(
+      '/RGSGateway/UserAPI/',
+    );
 
-    if (ppenv && gameId) {
-      if (!ppenvGameMap.has(ppenv)) {
-        ppenvGameMap.set(
-          ppenv,
-          new Set<string>(),
-        );
-      }
+  console.log(
+    'USERAPI MATCH:',
+    isUserApi,
+  );
 
-      ppenvGameMap
-        .get(ppenv)
-        ?.add(String(gameId));
-    }
-
-    const casinoId =
-      log?.contextMap?.casinoId;
-
-    if (
-      uuid &&
-      gameId &&
-      !uuidGameMap.has(uuid)
-    ) {
-      uuidGameMap.set(
-        uuid,
-        String(gameId),
-      );
-    }
-
-    if (
-      uuid &&
-      casinoId &&
-      !uuidCasinoMap.has(uuid)
-    ) {
-      uuidCasinoMap.set(
-        uuid,
-        String(casinoId),
-      );
-    }
+  if (!isUserApi) {
+    continue;
   }
 
-  return {
-    uuidGameMap,
-    uuidCasinoMap,
-    ppenvGameMap,
-  };
-}
-////launch fail mapaping//
-private buildLaunchFailureMap(
-  logs: any[],
-  uuidGameMap: Map<string, string>,
-  uuidCasinoMap: Map<string, string>,
-  ppenvCasinoMap: Map<string, string>,
-  ppenvGameMap: Map<string, Set<string>>,
-)
+      const errorCode =
+        this.extractErrorCodeFromText(
+          text,
+        );
 
-{
-  const launchFailureMap =
-    new Map<string, boolean>();
-for (const log of logs) {
-
-  console.log(
-    'PROCESSING LOG'
-  );
-
-  const text = [
-    log?.message,
-    log?.requestLog,
-    log?.responseLog,
-    log?.error,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-    // Only UserAPI failures
-  const isUserApi =
-  text.includes(
-    '/RGSGateway/UserAPI/',
-  );
-
-console.log(
-  'USERAPI MATCH:',
-  isUserApi,
-);
-
-if (!isUserApi) {
-  continue;
-}
-
-    const errorCode =
-      this.extractErrorCodeFromText(
-        text,
-      );
-
-      console.log(
-  'ERROR CODE:',
-  errorCode,
-);
-
-console.log(
-  'TEXT SAMPLE:',
-  text.substring(0, 500),
-);
-
-    // Ignore success
- if (
-  errorCode === null ||
-  errorCode === 0
-) {
-
-  console.log(
-    'SKIPPED DUE TO ERROR CODE:',
+        console.log(
+    'ERROR CODE:',
     errorCode,
   );
 
-  continue;
-}
-
-    const uuid =
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'];
-      const ppenv =
-  log?.contextMap?.ppenv;
-
-      console.log(
-  'ERROR LOG UUID INFO',
-  {
-    uuid:
-      log?.contextMap?.uuid,
-    uuidColon:
-      log?.contextMap?.['uuid:'],
-    casinoId:
-      log?.contextMap?.casinoId,
-    ppenv:
-      log?.contextMap?.ppenv,
-  },
-);
-
-
-
-if (!uuid && !ppenv) {
   console.log(
-    'ERROR RECORD HAS NO UUID OR PPENV',
-    {
+    'TEXT SAMPLE:',
+    text.substring(0, 500),
+  );
+
+      // Ignore success
+  if (
+    errorCode === null ||
+    errorCode === 0
+  ) {
+
+    console.log(
+      'SKIPPED DUE TO ERROR CODE:',
       errorCode,
+    );
+
+    continue;
+  }
+
+      const uuid =
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'];
+        const ppenv =
+    log?.contextMap?.ppenv;
+
+        console.log(
+    'ERROR LOG UUID INFO',
+    {
+      uuid:
+        log?.contextMap?.uuid,
+      uuidColon:
+        log?.contextMap?.['uuid:'],
       casinoId:
         log?.contextMap?.casinoId,
       ppenv:
@@ -1125,101 +1126,95 @@ if (!uuid && !ppenv) {
     },
   );
 
-  continue;
-}
-console.log(
-  'FOUND UUID FOR ERROR',
-  uuid,
-);
 
 
-let gameId =
-  uuidGameMap.get(uuid);
-
-if (!gameId) {
-  gameId =
-    text.match(/gameid=(\d+)/i)?.[1] ||
-    text.match(/"gameID":"([^"]+)"/)?.[1] ||
-    text.match(/"operatorGameId":"([^"]+)"/)?.[1];
-}
-
-if (!gameId && ppenv) {
-  const games =
-    ppenvGameMap.get(
-      String(ppenv),
+  if (!uuid && !ppenv) {
+    console.log(
+      'ERROR RECORD HAS NO UUID OR PPENV',
+      {
+        errorCode,
+        casinoId:
+          log?.contextMap?.casinoId,
+        ppenv:
+          log?.contextMap?.ppenv,
+      },
     );
 
-  if (games?.size) {
-    gameId = [...games][0];
+    continue;
   }
-}
-
-console.log(
-  'GAME LOOKUP RESULT',
-  {
+  console.log(
+    'FOUND UUID FOR ERROR',
     uuid,
-    gameId,
-    mapValue:
-      uuidGameMap.get(uuid),
-  },
-);
-console.log(
-  'RESOLVED GAME:',
-  gameId,
-);
+  );
 
-    let casinoId =
-  uuidCasinoMap.get(uuid);
 
-if (!casinoId) {
-  const ppenv =
-    log?.contextMap?.ppenv;
+  let gameId =
+    uuidGameMap.get(uuid);
 
-  if (ppenv) {
-    casinoId =
-      ppenvCasinoMap.get(
+  if (!gameId) {
+    gameId =
+      text.match(/gameid=(\d+)/i)?.[1] ||
+      text.match(/"gameID":"([^"]+)"/)?.[1] ||
+      text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+  }
+
+  if (!gameId && ppenv) {
+    const games =
+      ppenvGameMap.get(
         String(ppenv),
       );
+
+    if (games?.size) {
+      gameId = [...games][0];
+    }
   }
-}
-console.log(
-  'CASINO LOOKUP RESULT',
-  {
-    uuid,
-    casinoId,
-    mapValue:
-      uuidCasinoMap.get(uuid),
-    ppenv:
-      log?.contextMap?.ppenv,
-  },
-);
 
-console.log(
-  'RESOLVED CASINO:',
-  casinoId,
-);
-console.log(
-  'FAILURE LOOKUP:',
-  {
-    uuid,
-    gameId,
-    casinoId,
-    ppenv:
-      log?.contextMap?.ppenv,
-  },
-);
-console.log(
-  'FINAL VALUES',
-  {
-    uuid,
-    gameId,
-    casinoId,
-  },
-);
-
-if (!gameId || !casinoId) {
   console.log(
-    'LAUNCH FAILURE SKIPPED:',
+    'GAME LOOKUP RESULT',
+    {
+      uuid,
+      gameId,
+      mapValue:
+        uuidGameMap.get(uuid),
+    },
+  );
+  console.log(
+    'RESOLVED GAME:',
+    gameId,
+  );
+
+      let casinoId =
+    uuidCasinoMap.get(uuid);
+
+  if (!casinoId) {
+    const ppenv =
+      log?.contextMap?.ppenv;
+
+    if (ppenv) {
+      casinoId =
+        ppenvCasinoMap.get(
+          String(ppenv),
+        );
+    }
+  }
+  console.log(
+    'CASINO LOOKUP RESULT',
+    {
+      uuid,
+      casinoId,
+      mapValue:
+        uuidCasinoMap.get(uuid),
+      ppenv:
+        log?.contextMap?.ppenv,
+    },
+  );
+
+  console.log(
+    'RESOLVED CASINO:',
+    casinoId,
+  );
+  console.log(
+    'FAILURE LOOKUP:',
     {
       uuid,
       gameId,
@@ -1228,1737 +1223,503 @@ if (!gameId || !casinoId) {
         log?.contextMap?.ppenv,
     },
   );
-
-  continue;
-}
-
-console.log(
-  'LAUNCH FAILURE RESOLVED:',
-  {
-    uuid,
-    gameId,
-    casinoId,
-  },
-);
-console.log(
-  'ADDING TO FAILURE MAP:',
-  `${casinoId}_${gameId}`,
-);
-launchFailureMap.set(
-  `${casinoId}_${gameId}`,
-  true,
-);
-  }
-
-  return launchFailureMap;
-}
-
-  // =====================================================
-  // INVESTIGATION
-  // =====================================================
-async investigate(params: {
-  url: string;
-  startDate?: string;
-  endDate?: string;
-  cookies?: string;
-}) {
- 
-const cleanedUrl = params.url
-  .replace(/&amp;/g, '&')
-  .replace(/&amp;amp;/g, '&');
-
-
-console.log('CLEANED URL:', cleanedUrl);
-
-  const parsed = this.parseUrl(cleanedUrl);
-
-  const from =
-    params.startDate ||
-    dayjs()
-      .subtract(24, 'hour')
-      .toISOString();
-
-  const to =
-    params.endDate ||
-    dayjs().toISOString();
-
-const tableConfigResponse: any =
-  await this.repository.getTableConfig(
-    parsed.symbol,
+  console.log(
+    'FINAL VALUES',
+    {
+      uuid,
+      gameId,
+      casinoId,
+    },
   );
 
-const tableConfig =
-  tableConfigResponse?.recordset?.[0] || null;
-
-const tableFamilyResponse: any =
-  await this.repository.getTableFamily(
-    parsed.symbol,
-  );
-
-const tableFamily =
-  tableFamilyResponse?.recordset || [];
-
-  const baseGameId =
-  parsed.symbol.match(/^\d+/)?.[0] ||
-  parsed.symbol;
-
-  const blockedCountriesResponse =
-  await this.repository.getLcBlockedCountries([
-    baseGameId,
-  ]);
-
-  const lcBlockedCountryMap =
-  new Map<string, any[]>();
-
-for (const row of (blockedCountriesResponse?.recordset || []) as any[]) {
-  const key = String(
-    row.operator_game_id,
-  );
-
-  if (!lcBlockedCountryMap.has(key)) {
-    lcBlockedCountryMap.set(key, []);
-  }
-
-  lcBlockedCountryMap.get(key)?.push({
-    country_name: row.name,
-    country_code: row.country_code,
-  });
-}
-
-  const styleName =
-    parsed.stylename ||
-    parsed.secureLogin;
-
-  const casinoResponse: any =
-    await this.repository.findCasinoUsers(
-      styleName || '',
+  if (!gameId || !casinoId) {
+    console.log(
+      'LAUNCH FAILURE SKIPPED:',
+      {
+        uuid,
+        gameId,
+        casinoId,
+        ppenv:
+          log?.contextMap?.ppenv,
+      },
     );
 
-  let casinos = casinoResponse?.recordset || [];
-  console.log("STYLE NAME:", styleName);
-console.log("CASINOS LENGTH:", casinos.length);
+    continue;
+  }
+
+  console.log(
+    'LAUNCH FAILURE RESOLVED:',
+    {
+      uuid,
+      gameId,
+      casinoId,
+    },
+  );
+  console.log(
+    'ADDING TO FAILURE MAP:',
+    `${casinoId}_${gameId}`,
+  );
+  launchFailureMap.set(
+    `${casinoId}_${gameId}`,
+    true,
+  );
+    }
+
+    return launchFailureMap;
+  }
+
+    // =====================================================
+    // INVESTIGATION
+    // =====================================================
+  async investigate(params: {
+    url: string;
+    startDate?: string;
+    endDate?: string;
+    cookies?: string;
+  }) {
+  
+  const cleanedUrl = params.url
+    .replace(/&amp;/g, '&')
+    .replace(/&amp;amp;/g, '&');
 
 
-  const token =
-    parsed.token ||
-    parsed.tc ||
-    parsed.ppToken;
+  console.log('CLEANED URL:', cleanedUrl);
 
-  // =====================================================
-  // ✅ STEP 1: ENTRY LOG SEARCH
-  // =====================================================
+    const parsed = this.parseUrl(cleanedUrl);
 
-  const rawLogs =
-    await this.repository.searchGameLaunchLogs({
+    const from =
+      params.startDate ||
+      dayjs()
+        .subtract(24, 'hour')
+        .toISOString();
+
+    const to =
+      params.endDate ||
+      dayjs().toISOString();
+
+  const tableConfigResponse: any =
+    await this.repository.getTableConfig(
+      parsed.symbol,
+    );
+
+  const tableConfig =
+    tableConfigResponse?.recordset?.[0] || null;
+
+  const tableFamilyResponse: any =
+    await this.repository.getTableFamily(
+      parsed.symbol,
+    );
+
+  const tableFamily =
+    tableFamilyResponse?.recordset || [];
+
+    const baseGameId =
+    parsed.symbol.match(/^\d+/)?.[0] ||
+    parsed.symbol;
+
+    const blockedCountriesResponse =
+    await this.repository.getLcBlockedCountries([
+      baseGameId,
+    ]);
+
+    const lcBlockedCountryMap =
+    new Map<string, any[]>();
+
+  for (const row of (blockedCountriesResponse?.recordset || []) as any[]) {
+    const key = String(
+      row.operator_game_id,
+    );
+
+    if (!lcBlockedCountryMap.has(key)) {
+      lcBlockedCountryMap.set(key, []);
+    }
+
+    lcBlockedCountryMap.get(key)?.push({
+      country_name: row.name,
+      country_code: row.country_code,
+    });
+  }
+
+    const styleName =
+      parsed.stylename ||
+      parsed.secureLogin;
+
+    const casinoResponse: any =
+      await this.repository.findCasinoUsers(
+        styleName || '',
+      );
+
+    let casinos = casinoResponse?.recordset || [];
+    console.log("STYLE NAME:", styleName);
+  console.log("CASINOS LENGTH:", casinos.length);
+
+
+    const token =
+      parsed.token ||
+      parsed.tc ||
+      parsed.ppToken;
+
+    // =====================================================
+    // ✅ STEP 1: ENTRY LOG SEARCH
+    // =====================================================
+
+    const rawLogs =
+      await this.repository.searchGameLaunchLogs({
+        token: token || '',
+        gameId: parsed.symbol,
+        from,
+        to,
+      });
+
+    
+
+    const logs =
+      this.filterGameLaunchLogs(
+        rawLogs,
+        token || '',
+      );
+
+    console.log(
+      'TOTAL MATCHED LOGS:',
+      logs.length,
+    );
+
+    // =====================================================
+    // ✅ STEP 2: UUID EXTRACTION (FIXED ✅)
+    // =====================================================
+
+    const getUUID = (log: any) => {
+      return (
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'] ||
+        null
+      );
+    };
+
+  const uuids = [
+    ...new Set(
+      rawLogs
+        .map((x: any) =>
+          getUUID(x),
+        )
+        .filter(Boolean),
+    ),
+  ] as string[];
+
+  console.log(
+    'ALL UUIDS:',
+    uuids,
+  );
+
+  const uuidResults =
+    await Promise.all(
+      uuids.map((uuid) =>
+        this.repository.searchLogsByUUID({
+          uuid,
+          from,
+          to,
+        }),
+      ),
+    );
+
+  const uuidLogs = Array.from(
+    new Map(
+      uuidResults
+        .flat()
+        .map((log: any) => [
+          log._id,
+          log,
+        ]),
+    ).values(),
+  );
+
+  console.log(
+    'UUID LOG COUNT:',
+    uuidLogs.length,
+  );
+
+
+    // =====================================================
+    // ✅ STEP 4: CONFIG DETECTION (IMPROVED ✅)
+    // =====================================================
+
+  const logsToCheck = Array.from(
+    new Map(
+      [...rawLogs, ...uuidLogs].map(
+        (log: any) => [
+          log._id,
+          log,
+        ],
+      ),
+    ).values(),
+  );
+
+  console.log(
+    'COMBINED LOG COUNT:',
+    logsToCheck.length,
+  );
+  const {
+    uuidGameMap,
+    uuidCasinoMap,
+    ppenvGameMap,
+  } = this.buildSessionMaps(
+    logsToCheck,
+  );
+
+  console.log(
+    'UUID GAME MAP:',
+    Array.from(uuidGameMap.entries()),
+  );
+
+  console.log(
+    'UUID CASINO MAP:',
+    Array.from(uuidCasinoMap.entries()),
+  );
+
+  let fullLogs: any[] = [];
+
+  fullLogs =
+    await this.repository.searchAllLogsByToken({
       token: token || '',
-      gameId: parsed.symbol,
       from,
       to,
     });
 
-  
 
-  const logs =
-    this.filterGameLaunchLogs(
-      rawLogs,
-      token || '',
+
+
+  console.log(
+    'FIRST LOG CASINO ID:',
+    fullLogs[0]?.contextMap?.casinoId,
+  );
+
+  const ppenvCasinoMap =
+    this.buildPpenvCasinoMap(
+      [...fullLogs, ...logsToCheck],
     );
 
   console.log(
-    'TOTAL MATCHED LOGS:',
-    logs.length,
-  );
-
-  // =====================================================
-  // ✅ STEP 2: UUID EXTRACTION (FIXED ✅)
-  // =====================================================
-
-  const getUUID = (log: any) => {
-    return (
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'] ||
-      null
-    );
-  };
-
-const uuids = [
-  ...new Set(
-    rawLogs
-      .map((x: any) =>
-        getUUID(x),
-      )
-      .filter(Boolean),
-  ),
-] as string[];
-
-console.log(
-  'ALL UUIDS:',
-  uuids,
-);
-
-const uuidResults =
-  await Promise.all(
-    uuids.map((uuid) =>
-      this.repository.searchLogsByUUID({
-        uuid,
-        from,
-        to,
-      }),
+    'PPENV CASINO MAP:',
+    Array.from(
+      ppenvCasinoMap.entries(),
     ),
   );
 
-const uuidLogs = Array.from(
-  new Map(
-    uuidResults
-      .flat()
-      .map((log: any) => [
-        log._id,
-        log,
-      ]),
-  ).values(),
-);
-
-console.log(
-  'UUID LOG COUNT:',
-  uuidLogs.length,
-);
-
-
-  // =====================================================
-  // ✅ STEP 4: CONFIG DETECTION (IMPROVED ✅)
-  // =====================================================
-
- const logsToCheck = Array.from(
-  new Map(
-    [...rawLogs, ...uuidLogs].map(
-      (log: any) => [
-        log._id,
-        log,
-      ],
-    ),
-  ).values(),
-);
-
-console.log(
-  'COMBINED LOG COUNT:',
-  logsToCheck.length,
-);
- const {
-  uuidGameMap,
-  uuidCasinoMap,
-  ppenvGameMap,
-} = this.buildSessionMaps(
-  logsToCheck,
-);
-
-console.log(
-  'UUID GAME MAP:',
-  Array.from(uuidGameMap.entries()),
-);
-
-console.log(
-  'UUID CASINO MAP:',
-  Array.from(uuidCasinoMap.entries()),
-);
-
-let fullLogs: any[] = [];
-
-fullLogs =
-  await this.repository.searchAllLogsByToken({
-    token: token || '',
-    from,
-    to,
-  });
-
-
-
-
-console.log(
-  'FIRST LOG CASINO ID:',
-  fullLogs[0]?.contextMap?.casinoId,
-);
-
-const ppenvCasinoMap =
-  this.buildPpenvCasinoMap(
-    [...fullLogs, ...logsToCheck],
-  );
-
-console.log(
-  'PPENV CASINO MAP:',
-  Array.from(
-    ppenvCasinoMap.entries(),
-  ),
-);
-
-const launchFailureMap =
-  this.buildLaunchFailureMap(
-    logsToCheck,
-    uuidGameMap,
-    uuidCasinoMap,
-    ppenvCasinoMap,
-    ppenvGameMap,
-  );
-
-console.log(
-  'LAUNCH FAILURE MAP:',
-  Array.from(
-    launchFailureMap.entries(),
-  ),
-);
-const matchedCasinoId =
-  logsToCheck.find(
-    (x: any) =>
-      x?.contextMap?.casinoId,
-  )?.contextMap?.casinoId || null;
-
-  if (
-  casinos.length === 0 &&
-  matchedCasinoId
-) {
-  const casinoDetails =
-    await this.repository.getCasinoDetails(
-      matchedCasinoId,
+  const launchFailureMap =
+    this.buildLaunchFailureMap(
+      logsToCheck,
+      uuidGameMap,
+      uuidCasinoMap,
+      ppenvCasinoMap,
+      ppenvGameMap,
     );
 
-  const dbCasino: any =
-    casinoDetails?.recordset?.[0];
+  console.log(
+    'LAUNCH FAILURE MAP:',
+    Array.from(
+      launchFailureMap.entries(),
+    ),
+  );
+  const matchedCasinoId =
+    logsToCheck.find(
+      (x: any) =>
+        x?.contextMap?.casinoId,
+    )?.contextMap?.casinoId || null;
 
-  casinos = [
-    {
-      casino_id:
+    if (
+    casinos.length === 0 &&
+    matchedCasinoId
+  ) {
+    const casinoDetails =
+      await this.repository.getCasinoDetails(
         matchedCasinoId,
-
-      casino_desc:
-        dbCasino?.casino_desc || '',
-
-      active_flag: null,
-
-      env:
-        dbCasino?.env || '',
-
-      ucid:
-        dbCasino?.UCID || '',
-    },
-  ];
-}
-
-const configErrorLogs =
-  logsToCheck.filter((log: any) => {
-    const msg =
-      log?.message ||
-      log?.error ||
-      JSON.stringify(log);
-
-    return (
-      msg.includes('Impl not found') ||
-      msg.includes('Missing Impl for casino') ||
-      msg.includes('Operator OWC is not correct')
-    );
-  });
-
-const isConfigIssue =
-  configErrorLogs.length > 0;
-
-
-  const configErrors =
-  configErrorLogs.map((log: any) => ({
-    timestamp:
-      log?.['@timestamp'] || '',
-
-    message:
-      log?.message ||
-      log?.error ||
-      '',
-  }));
-
-
-const matchedCasinoIdFromFullLogs =
-  fullLogs.find(
-    (x: any) =>
-      x?.contextMap?.casinoId,
-  )?.contextMap?.casinoId || null;
-
-console.log(
-  'MATCHED CASINO ID FROM FULL LOGS:',
-  matchedCasinoIdFromFullLogs,
-);
-
-let prohibitedJurisdictionLogs: any[] = [];
-prohibitedJurisdictionLogs =
-  logsToCheck.filter((log: any) => {
-    const msg = [
-      log?.message,
-      log?.requestLog,
-      log?.responseLog,
-      log?.error,
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    const errorCode =
-      this.extractErrorCodeFromText(
-        msg,
       );
 
-    const uuid =
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'] ||
-      '';
+    const dbCasino: any =
+      casinoDetails?.recordset?.[0];
 
-    const hasError0InSameSession =
-      errorCode === 0 ||
-      logsToCheck.some((x: any) => {
-        const otherUuid =
-          x?.contextMap?.uuid ||
-          x?.contextMap?.['uuid:'] ||
-          '';
+    casinos = [
+      {
+        casino_id:
+          matchedCasinoId,
 
-        if (
-          uuid &&
-          otherUuid &&
-          uuid !== otherUuid
-        ) {
-          return false;
-        }
+        casino_desc:
+          dbCasino?.casino_desc || '',
 
-        const otherText = [
-          x?.message,
-          x?.requestLog,
-          x?.responseLog,
-          x?.error,
-        ]
-          .filter(Boolean)
-          .join(' ');
+        active_flag: null,
 
-        return (
-          this.extractErrorCodeFromText(
-            otherText,
-          ) === 0
-        );
-      });
+        env:
+          dbCasino?.env || '',
 
-    const hasLcBlockMessage =
-      msg.includes(
-        'Prohibited Jurisdictions',
-      ) ||
-      msg.includes(
-        'You are not allowed to play Live Dealer',
-      ) ||
-      msg.includes(
-        'Auth error jurisdiction',
-      ) ||
-      msg.includes(
-        'IP is not allowed for blocked country',
-      );
+        ucid:
+          dbCasino?.UCID || '',
+      },
+    ];
+  }
 
-    return (
-      hasError0InSameSession &&
-      hasLcBlockMessage
-    );
-  });
-console.log(
-  'CONFIG ISSUE DETECTED:',
-  isConfigIssue,
-);
-
-  // =====================================================
-  // ✅ CASINO MATCHING (UNCHANGED)
-  // =====================================================
-// =====================================================
-// ✅ FINAL DECISION FLOW (FIXED ✅)
-// =====================================================
-const hasLogs =
-  (uuidLogs && uuidLogs.length > 0) ||
-  (rawLogs && rawLogs.length > 0) ||
-  (fullLogs && fullLogs.length > 0);
-
-const singleCasino = casinos.length === 1;
-
-const effectiveMatchedCasinoId =
-  matchedCasinoIdFromFullLogs ||
-  matchedCasinoId;
-
-// ✅ MULTIPLE CASINOS + LOGS → FILTER
-if (
-  !singleCasino &&
-  hasLogs &&
-  effectiveMatchedCasinoId
-) {
-  casinos = casinos.filter(
-    (x: any) =>
-      `${x.casino_id}` ===
-      `${effectiveMatchedCasinoId}`,
-  );
-}
-
-// ✅ MULTIPLE + NO LOGS → DO NOTHING ✅
-// ✅ SINGLE CASINO → DO NOTHING ✅
-const responseLogs = Array.from(
-  new Map(
-    [
-      ...logsToCheck,
-      ...fullLogs,
-    ].map((log: any) => [
-      log?._id ||
-        `${log?.['@timestamp']}_${log?.message}`,
-      log,
-    ]),
-  ).values(),
-);
-
-const platformLogs =
-  responseLogs.filter(
-    (log: any) =>
-      log?._index?.startsWith(
-        'filebeat-slots',
-      ),
-  );
-
-const lcLogs =
-  responseLogs.filter(
-    (log: any) =>
-      !log?._index?.startsWith(
-        'filebeat-slots',
-      ),
-  );
-
- const noLogsFound =
-  platformLogs.length === 0 &&
-  lcLogs.length === 0;
-
-console.log(
-  'NO LOGS FOUND:',
-  noLogsFound,
-);
-
-const has521 =
-  this.has521Error(
-    lcLogs,
-  );
-  console.log(
-  'LC LOG COUNT:',
-  lcLogs.length,
-);
-
-
-console.log(
-  'HAS 521:',
-  has521,
-);
-
-let platformConfig = null;
-let matchedCasinoConfig: any = null;
-
-if (casinos.length === 1) {
-  platformConfig =
-    await this.getCasinoPlatformConfig(
-      casinos[0].casino_id,
-    );
-
-  const targetCasinoId =
-    this.extractCasinoId(
-      casinos[0].casino_id,
-    );
-
-matchedCasinoConfig =
-  platformConfig?.data?.casinoConfigurations?.find(
-    (x: any) =>
-      Number(x.casinoID) ===
-      Number(targetCasinoId),
-  );
-
-}
-
-
-
-
-const tableConfigEventMap =
-new Map<string, any[]>();
-for (const log of prohibitedJurisdictionLogs) {
-  const text = [
-    log?.message,
-    log?.requestLog,
-    log?.responseLog,
-    log?.error,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const sessionId =
-    log?.contextMap?.uuid ||
-    log?.contextMap?.['uuid:'] ||
-    '';
-
-  const relatedLogs =
-    logsToCheck.filter((x: any) => {
-      const otherSessionId =
-        x?.contextMap?.uuid ||
-        x?.contextMap?.['uuid:'] ||
-        '';
+  const configErrorLogs =
+    logsToCheck.filter((log: any) => {
+      const msg =
+        log?.message ||
+        log?.error ||
+        JSON.stringify(log);
 
       return (
-        sessionId &&
-        otherSessionId === sessionId
+        msg.includes('Impl not found') ||
+        msg.includes('Missing Impl for casino') ||
+        msg.includes('Operator OWC is not correct')
       );
     });
 
-  const relatedText =
-    [
-      text,
-      ...relatedLogs.map((x: any) =>
-        [
-          x?.message,
-          x?.requestLog,
-          x?.responseLog,
-          x?.error,
-        ]
-          .filter(Boolean)
-          .join(' '),
-      ),
-    ].join(' ');
+  const isConfigIssue =
+    configErrorLogs.length > 0;
 
-  const operatorGameId =
-    relatedText.match(/gameid=(\d+)/i)?.[1] ||
-    relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
-    relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-    parsed.symbol;
 
-  const playerIp =
-    relatedText.match(
-      /"ipAddress":"([^"]+)"/,
-    )?.[1] || '';
-
-  const playerCountry =
-    relatedText.match(
-      /"ipCountry":"([^"]+)"/,
-    )?.[1] || '';
-
-  const playerRegion =
-    relatedText.match(
-      /"ipRegion":"([^"]+)"/,
-    )?.[1] || '';
-
-  const prohibitedMessage =
-    relatedText.includes(
-      'IP is not allowed for blocked country',
-    )
-      ? 'IP is not allowed for blocked country'
-      : relatedText.includes(
-          'Auth error jurisdiction',
-        )
-        ? 'Auth error jurisdiction'
-        : log?.message ||
-          'You are not allowed to play Live Dealer';
-
-  this.pushTableConfigEvent(
-    tableConfigEventMap,
-    operatorGameId,
-    {
+    const configErrors =
+    configErrorLogs.map((log: any) => ({
       timestamp:
         log?.['@timestamp'] || '',
 
-      player_ip:
-        playerIp,
+      message:
+        log?.message ||
+        log?.error ||
+        '',
+    }));
 
-      player_country:
-        playerCountry,
 
-      player_region:
-        playerRegion,
+  const matchedCasinoIdFromFullLogs =
+    fullLogs.find(
+      (x: any) =>
+        x?.contextMap?.casinoId,
+    )?.contextMap?.casinoId || null;
 
-      session_id:
-        sessionId,
-
-      lc_level_block:
-        true,
-
-      block_level:
-        'LC',
-
-      recommendation:
-        'Player is blocked at LC level due to prohibited jurisdiction.',
-
-      prohibited_message:
-        prohibitedMessage,
-    },
+  console.log(
+    'MATCHED CASINO ID FROM FULL LOGS:',
+    matchedCasinoIdFromFullLogs,
   );
-}
 
-if (
-  has521 &&
-  casinos.length === 1
-) {
-  
-const jurisdictionSettings =
-  matchedCasinoConfig?.configuration
-    ?.jurisdictionSettings;
-
-const countrySettings =
-  matchedCasinoConfig?.configuration
-    ?.countrySettings;
-
-const regionSettings =
-  matchedCasinoConfig?.configuration
-    ?.regionSettings;
-
-const authLogs =
-  lcLogs.filter((log: any) => {
-    const text = [
-      log?.message,
-      log?.requestLog,
-      log?.responseLog,
-      log?.error,
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    const errorCode =
-      this.extractErrorCodeFromText(
-        text,
-      );
-
-    return (
-      text.includes(
-        '/RGSGateway/UserAPI/',
-      ) &&
-      errorCode === 521 &&
-      text.includes(
-        'Unsupported jurisdiction',
-      )
-    );
-  });
-const uniqueFailures = Array.from(
-  new Map(
-    authLogs.map((authLog: any) => {
-      const authText = [
-        authLog?.message,
-        authLog?.requestLog,
-        authLog?.responseLog,
-        authLog?.error,
+  let prohibitedJurisdictionLogs: any[] = [];
+  prohibitedJurisdictionLogs =
+    logsToCheck.filter((log: any) => {
+      const msg = [
+        log?.message,
+        log?.requestLog,
+        log?.responseLog,
+        log?.error,
       ]
         .filter(Boolean)
         .join(' ');
 
-      const gameId =
-        authText.match(/"gameID":"([^"]+)"/)?.[1] ||
-        authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-        parsed.symbol ||
+      const errorCode =
+        this.extractErrorCodeFromText(
+          msg,
+        );
+
+      const uuid =
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'] ||
         '';
 
-      const playerIp =
-        authText.match(
-          /"ipAddress":"([^"]+)"/,
-        )?.[1] || '';
+      const hasError0InSameSession =
+        errorCode === 0 ||
+        logsToCheck.some((x: any) => {
+          const otherUuid =
+            x?.contextMap?.uuid ||
+            x?.contextMap?.['uuid:'] ||
+            '';
 
-      const playerCountry =
-        authText.match(
-          /"ipCountry":"([^"]+)"/,
-        )?.[1] || '';
+          if (
+            uuid &&
+            otherUuid &&
+            uuid !== otherUuid
+          ) {
+            return false;
+          }
 
-      const playerRegion =
-        authText.match(
-          /"ipRegion":"([^"]+)"/,
-        )?.[1] || '';
+          const otherText = [
+            x?.message,
+            x?.requestLog,
+            x?.responseLog,
+            x?.error,
+          ]
+            .filter(Boolean)
+            .join(' ');
 
-      const sessionId =
-        authLog?.contextMap?.uuid ||
-        authLog?.contextMap?.['uuid:'] ||
-        '';
+          return (
+            this.extractErrorCodeFromText(
+              otherText,
+            ) === 0
+          );
+        });
 
-      const timestamp =
-        authLog?.['@timestamp'] || '';
+      const hasLcBlockMessage =
+        msg.includes(
+          'Prohibited Jurisdictions',
+        ) ||
+        msg.includes(
+          'You are not allowed to play Live Dealer',
+        ) ||
+        msg.includes(
+          'Auth error jurisdiction',
+        ) ||
+        msg.includes(
+          'IP is not allowed for blocked country',
+        );
 
-      const prohibitedMessage =
-        authText.includes(
-          'Unsupported jurisdiction',
-        )
-          ? '521 : Unsupported jurisdiction'
-          : '521 : Unsupported jurisdiction';
-
-      return [
-        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
-        {
-          gameId,
-          playerIp,
-          playerCountry,
-          playerRegion,
-          sessionId,
-          timestamp,
-          prohibitedMessage,
-        },
-      ];
-    }),
-  ).values(),
-);
-
-for (const failure of uniqueFailures as any[]) {
-  const analysis =
-    this.analyze521(
-      failure.playerCountry,
-      failure.playerRegion,
-      jurisdictionSettings,
-      countrySettings,
-      regionSettings,
-    );
-
-    this.pushTableConfigEvent(
-    tableConfigEventMap,
-    failure.gameId,
-    {
-      timestamp:
-        failure.timestamp,
-
-      player_ip:
-        failure.playerIp,
-
-      player_country:
-        failure.playerCountry,
-
-      player_region:
-        failure.playerRegion,
-
-      session_id:
-        failure.sessionId,
-
-      lc_level_block:
-        false,
-
-      block_level:
-        'PLATFORM',
-
-      recommendation:
-        analysis.recommendation,
-
-      prohibited_message:
-        failure.prohibitedMessage ||
-        '521 : Unsupported jurisdiction',
-    },
-  );
-}
-
-console.log(
-  'JURISDICTION SETTINGS:',
-  JSON.stringify(
-    jurisdictionSettings,
-  ),
-);
-
-console.log(
-  'COUNTRY SETTINGS:',
-  JSON.stringify(
-    countrySettings,
-  ),
-);
-console.log(
-  'REGION SETTINGS:',
-  JSON.stringify(
-    regionSettings,
-  ),
-);
-
-}
-/*
-else if (
-  noLogsFound &&
-  parsed.country &&
-  casinos.length === 1
-) {
-  console.log(
-    'RUNNING NO LOG COUNTRY ANALYSIS:',
-    parsed.country,
-  );
-
-
-  const jurisdictionSettings =
-  matchedCasinoConfig?.configuration
-    ?.jurisdictionSettings;
-
-const countrySettings =
-  matchedCasinoConfig?.configuration
-    ?.countrySettings;
-
-const regionSettings =
-  matchedCasinoConfig?.configuration
-    ?.regionSettings;
-
-const analysis =
-  this.analyze521(
-    parsed.country,
-    '',
-    jurisdictionSettings,
-    countrySettings,
-    regionSettings,
-  );
-
-console.log(
-  'NO LOG ANALYSIS:',
-  analysis,
-);
-
-
-this.pushTableConfigEvent(
-  tableConfigEventMap,
-  parsed.symbol,
-  {
-    timestamp: '',
-
-    player_ip: '',
-
-    player_country:
-      parsed.country,
-
-    player_region: '',
-
-    session_id: '',
-
-    lc_level_block: false,
-
-    block_level:
-      'PLATFORM',
-
-    recommendation:
-      analysis.recommendation,
-
-    prohibited_message:
-      'No logs found. RCA based on platform configuration.',
-  },
-);
-
-}
-*/
-
-const casinoData: any[] = [];
-
-for (const casino of casinos) {
-
-
-  let casinoPlatformConfig: any = [];
-
-  const casinoTableConfigEventMap =
-  new Map<string, any[]>();
-
-  for (const [
-  key,
-  value,
-] of tableConfigEventMap.entries()) {
-  casinoTableConfigEventMap.set(
-    key,
-    [...value],
-  );
-}
-
-try {
-  const platformConfig =
-    await this.getCasinoPlatformConfig(
-      casino.casino_id,
-    );
-
-  const targetCasinoId =
-    this.extractCasinoId(
-      casino.casino_id,
-    );
-
-matchedCasinoConfig =
-  platformConfig?.data?.casinoConfigurations?.find(
-    (x: any) =>
-      Number(x.casinoID) ===
-      Number(targetCasinoId),
-  );
-
-
-
-  casinoPlatformConfig =
-    this.populatePlatformConfigInfo(
-      matchedCasinoConfig,
-    );
-
-if (
-  noLogsFound &&
-  parsed.country
-) {
-  const analysis =
-    this.analyze521(
-      parsed.country,
-      '',
-      matchedCasinoConfig?.configuration
-        ?.jurisdictionSettings,
-      matchedCasinoConfig?.configuration
-        ?.countrySettings,
-      matchedCasinoConfig?.configuration
-        ?.regionSettings,
-    );
-
-  this.pushTableConfigEvent(
-    casinoTableConfigEventMap,
-    parsed.symbol,
-    {
-      timestamp: '',
-      player_ip: '',
-      player_country: parsed.country,
-      player_region: '',
-      session_id: '',
-      lc_level_block: false,
-      block_level: 'PLATFORM',
-      recommendation:
-        analysis.recommendation,
-      prohibited_message:
-        'No logs found. RCA based on platform configuration.',
-    },
-  );
-}
-
-} catch (error) {
-  casinoPlatformConfig = [];
-}
-
-const [lcTables, platformGames] =
-  await Promise.all([
-    this.getLcEnabledTables(
-      casino.casino_id,
-      params.cookies || '',
-    ),
-    this.getCasinoGames(
-      casino.casino_id,
-    ),
-  ]);
-const launchedGameIds =
-  new Set([parsed.symbol]);
-
-const result =
-  this.buildCasinoResult(
-    casino,
-    parsed.symbol,
-    tableConfig,
-    tableFamily,
-    lcTables,
-    platformGames,
-    lcBlockedCountryMap,
-    launchedGameIds,
-    launchFailureMap,
-  );
-
-  let ucidConfigErrors: any[] = [];
-  if (result?.ucid) {
-  try {
-    const ucidLogs =
-      await this.repository.searchCasinoMappingErrors({
-        ucId: String(result.ucid),
-        from,
-        to,
-      });
-
-    ucidConfigErrors =
-      (ucidLogs || []).map(
-        (log: any) => ({
-          timestamp:
-            log?.['@timestamp'] || '',
-
-          message:
-            log?.message || '',
-        }),
+      return (
+        hasError0InSameSession &&
+        hasLcBlockMessage
       );
-  } catch (error: any) {
-    ucidConfigErrors = [
-      {
-        timestamp:
-          new Date().toISOString(),
-
-        message:
-          'Merged Lobby config error check timed out. If required, please check filebeat-live logs manually.',
-      },
-    ];
-  }
-}
-const casinoPlatformLogs =
-  platformLogs.filter(
-    (log: any) =>
-      this.casinoMatches(
-        casino.casino_id,
-        log?.app?.casinoID,
-      ),
-  );
-
-const casinoLcLogs =
-  lcLogs.filter(
-    (log: any) =>
-      log?.contextMap?.casinoId ===
-      casino.casino_id,
-  );
-
-const tableInfoWithConfig =
-  this.attachTableConfigEvents(
-    result.table_info,
-    casinoTableConfigEventMap,
-  );
-
-casinoData.push({
-  casino_id:
-    result.casino_id,
-
-  casino_desc:
-    result.casino_desc,
-
-  env_name:
-    result.env_name,
-
-  ucid:
-    result.ucid,
-
-  casino_active_flag:
-    result.casino_active_flag,
-
-  config_error: [
-    ...configErrors,
-    ...ucidConfigErrors,
-  ],
-
-platform_config:
-  casinoPlatformConfig,
-
-  table_info:
-    tableInfoWithConfig,
-
-  log_info: [
-    {
-      log_type:
-        'PLATFORM',
-
-      logs:
-        this.mapLogs(
-          casinoPlatformLogs,
-        ),
-    },
-
-    {
-      log_type:
-        'LC',
-
-      logs:
-        this.mapLogs(
-          casinoLcLogs,
-        ),
-    },
-  ],
-});
-}
-
-  // =====================================================
-  // ✅ FINAL RESPONSE
-  // =====================================================
-// ===============================
-// STEP 3: GAME DETAILS ARRAY   PUT IT HERE
-// ===============================
-const launchTable = [
-  {
-    operator_game_id:
-      tableConfig?.operator_game_id ||
-      parsed.symbol,
-
-    table_name:
-      tableConfig?.table_name ||
-      null,
-
-    table_id:
-      tableConfig?.table_id ||
-      null,
-  },
-];
-
-// THEN return
-return {
-  success: true,
-
-  duration: {
-    from,
-    to,
-  },
-
-  parsed,
-
-  casinos:
-    casinoData,
-};
-}
-
-// Session or Token Based Investigation
-async investigateSession(params: {
-  token: string;
-  startDate?: string;
-  endDate?: string;
-  cookies?: string;
-}) {
-
-  const investigationStart =
-  Date.now();
-
-  const from =
-    params.startDate ||
-    dayjs()
-      .subtract(24, 'hour')
-      .toISOString();
-
-  const to =
-    params.endDate ||
-    dayjs().toISOString();
-
-const rawToken =
-  params.token;
-
-const encodedToken =
-  encodeURIComponent(
-    rawToken,
-  );
-
+    });
   console.log(
-  'TOKEN:',
-  params.token,
-);
-
-console.log(
-  'ENCODED TOKEN:',
-  encodedToken,
-);
-
-const [
-  encodedLogs,
-  rawLogs,
-] = await Promise.all([
-  this.repository.searchAllLogsByToken({
-    token: encodedToken,
-    from,
-    to,
-  }),
-
-  this.repository.searchAllLogsByToken({
-    token: rawToken,
-    from,
-    to,
-  }),
-]);
-
-const fullLogs = Array.from(
-  new Map(
-    [...encodedLogs, ...rawLogs].map(
-      (log: any) => [
-        log._id,
-        log,
-      ],
-    ),
-  ).values(),
-);
-
-console.log(
-  'ENCODED LOGS:',
-  encodedLogs.length,
-);
-
-console.log(
-  'RAW LOGS:',
-  rawLogs.length,
-);
-
-console.log(
-  'FULL LOGS AFTER DEDUPE:',
-  fullLogs.length,
-);
-
-  console.log(
-    'FULL TOKEN LOGS:',
-    fullLogs.length,
-  );
-
-  const getUUID = (log: any) => {
-    return (
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'] ||
-      null
-    );
-  };
-const uuids = [
-  ...new Set(
-    fullLogs
-      .map((x: any) =>
-        getUUID(x),
-      )
-      .filter(Boolean),
-  ),
-];
-
-console.log(
-  'ALL UUIDS:',
-  uuids,
-);
-
-const uuidResults =
-  await Promise.all(
-    uuids.map((uuid) =>
-      this.repository.searchLogsByUUID({
-        uuid,
-        from,
-        to,
-      }),
-    ),
-  );
-
-const uuidLogs = Array.from(
-  new Map(
-    uuidResults
-      .flat()
-      .map((log: any) => [
-        log._id,
-        log,
-      ]),
-  ).values(),
-);
-
-console.log(
-  'UUID LOG COUNT:',
-  uuidLogs.length,
-);
-  const logsToCheck = Array.from(
-  new Map(
-    [...fullLogs, ...uuidLogs].map(
-      (log: any) => [
-        log._id,
-        log,
-      ],
-    ),
-  ).values(),
-);
-
-console.log(
-  'COMBINED LOG COUNT:',
-  logsToCheck.length,
-);
-const {
-  uuidGameMap,
-  uuidCasinoMap,
-  ppenvGameMap,
-} = this.buildSessionMaps(
-  logsToCheck,
-);
-
-console.log(
-  'UUID GAME MAP:',
-  Array.from(uuidGameMap.entries()),
-);
-
-console.log(
-  'UUID CASINO MAP:',
-  Array.from(uuidCasinoMap.entries()),
-);
-
-const ppenvCasinoMap =
-  this.buildPpenvCasinoMap(
-    [...fullLogs, ...logsToCheck],
-  );
-
-console.log(
-  'PPENV CASINO MAP:',
-  Array.from(
-    ppenvCasinoMap.entries(),
-  ),
-);
-
-const launchFailureMap =
-  this.buildLaunchFailureMap(
-    logsToCheck,
-    uuidGameMap,
-    uuidCasinoMap,
-    ppenvCasinoMap,
-    ppenvGameMap,
-  );
-
-console.log(
-  'LAUNCH FAILURE MAP:',
-  Array.from(
-    launchFailureMap.entries(),
-  ),
-);
-
-const configErrorLogs =
-  logsToCheck.filter((log: any) => {
-    const msg =
-      log?.message ||
-      log?.error ||
-      JSON.stringify(log);
-
-    return (
-      msg.includes(
-        'Impl not found',
-      ) ||
-      msg.includes(
-        'Missing Impl for casino',
-      ) ||
-      msg.includes(
-        'Operator OWC is not correct',
-      )
-    );
-  });
-
-const isConfigIssue =
-  configErrorLogs.length > 0;
-
-  console.log(
-    'CONFIG ISSUE:',
+    'CONFIG ISSUE DETECTED:',
     isConfigIssue,
   );
 
-const configErrors =
-  configErrorLogs.map((log: any) => ({
-    timestamp:
-      log?.['@timestamp'] || '',
+    // =====================================================
+    // ✅ CASINO MATCHING (UNCHANGED)
+    // =====================================================
+  // =====================================================
+  // ✅ FINAL DECISION FLOW (FIXED ✅)
+  // =====================================================
+  const hasLogs =
+    (uuidLogs && uuidLogs.length > 0) ||
+    (rawLogs && rawLogs.length > 0) ||
+    (fullLogs && fullLogs.length > 0);
 
-    message:
-      log?.message ||
-      log?.error ||
-      '',
-  }));
-let prohibitedJurisdictionLogs: any[] = [];
-prohibitedJurisdictionLogs =
-  logsToCheck.filter((log: any) => {
-    const msg = [
-      log?.message,
-      log?.requestLog,
-      log?.responseLog,
-      log?.error,
-    ]
-      .filter(Boolean)
-      .join(' ');
+  const singleCasino = casinos.length === 1;
 
-    const errorCode =
-      this.extractErrorCodeFromText(
-        msg,
-      );
+  const effectiveMatchedCasinoId =
+    matchedCasinoIdFromFullLogs ||
+    matchedCasinoId;
 
-    const uuid =
-      log?.contextMap?.uuid ||
-      log?.contextMap?.['uuid:'] ||
-      '';
-
-    const hasError0InSameSession =
-      errorCode === 0 ||
-      logsToCheck.some((x: any) => {
-        const otherUuid =
-          x?.contextMap?.uuid ||
-          x?.contextMap?.['uuid:'] ||
-          '';
-
-        if (
-          uuid &&
-          otherUuid &&
-          uuid !== otherUuid
-        ) {
-          return false;
-        }
-
-        const otherText = [
-          x?.message,
-          x?.requestLog,
-          x?.responseLog,
-          x?.error,
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        return (
-          this.extractErrorCodeFromText(
-            otherText,
-          ) === 0
-        );
-      });
-
-    const hasLcBlockMessage =
-      msg.includes(
-        'Prohibited Jurisdictions',
-      ) ||
-      msg.includes(
-        'You are not allowed to play Live Dealer',
-      ) ||
-      msg.includes(
-        'Auth error jurisdiction',
-      ) ||
-      msg.includes(
-        'IP is not allowed for blocked country',
-      );
-
-    return (
-      hasError0InSameSession &&
-      hasLcBlockMessage
-    );
-  });
-
-const uniqueGameIds = [
-  ...new Set(
-    logsToCheck
-      .map((log: any) => {
-        const text = [
-          log?.message,
-          log?.requestLog,
-          log?.responseLog,
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        return (
-          text.match(/"gameID":"([^"]+)"/)?.[1] ||
-          text.match(/"operatorGameId":"([^"]+)"/)?.[1]
-        );
-      })
-      .filter(Boolean),
-  ),
-];
-  console.log(
-    'UNIQUE GAME IDS:',
-    uniqueGameIds,
-  );
-
-  const baseGameIds = [
-  ...new Set(
-    (uniqueGameIds as string[]).map(
-      (gameId) =>
-        gameId.match(/^\d+/)?.[0] ||
-        gameId,
-    ),
-  ),
-];
-
-console.log(
-  'BASE GAME IDS:',
-  baseGameIds,
-);
-
-const launchedGameIds =
-  new Set(
-    uniqueGameIds.map(String),
-  );
-
-const blockedCountriesResponse =
-  baseGameIds.length > 0
-    ? await this.repository.getLcBlockedCountries(
-        baseGameIds,
-      )
-    : { recordset: [] };
-
-  const lcBlockedCountryMap =
-  new Map<string, any[]>();
-
-for (
-  const row of (
-    blockedCountriesResponse?.recordset || []
-  ) as any[]
-) {
-  const key = String(
-    row.operator_game_id,
-  );
-
-  if (!lcBlockedCountryMap.has(key)) {
-    lcBlockedCountryMap.set(key, []);
-  }
-
-  lcBlockedCountryMap.get(key)?.push({
-    country_name: row.name,
-    country_code: row.country_code,
-  });
-}
-
-const casinoIdsFromLogs = [
-  ...new Set(
-    logsToCheck
-      .map(
-        (x: any) =>
-          x?.contextMap?.casinoId,
-      )
-      .filter(Boolean),
-  ),
-];
-let casinos: any[] = [];
-const matchedCasinoId =
-  casinoIdsFromLogs[0] || null;
-
-console.log(
-  'CASINOS FOUND IN LOGS =>',
-  casinoIdsFromLogs,
-);
-
-console.log(
-  'CASINO COUNT =>',
-  casinoIdsFromLogs.length,
-);
-
-
-if (matchedCasinoId) {
-  const casinoDetails =
-    await this.repository.getCasinoDetails(
-      matchedCasinoId,
-    );
-
-const dbCasino: any =
-  casinoDetails?.recordset?.[0];
-
-  console.log(
-  'DB CASINO DETAILS:',
-  JSON.stringify(dbCasino),
-);
-casinos = [
-  {
-    casino_id: matchedCasinoId,
-
-  casino_desc:
-  dbCasino?.casino_desc || '',
-
-    active_flag: null,
-
-    env:
-      dbCasino?.env || '',
-
-    ucid:
-      dbCasino?.UCID || '',
-  },
-];
-}
-
-
- let tableConfigs: any[] = [];
-let tableFamilies: any[] = [];
-
-if (
-  matchedCasinoId &&
-  uniqueGameIds.length > 0
-) {
-  const [
-    tableConfigsResponse,
-    tableFamiliesResponse,
-  ] = await Promise.all([
-    this.repository.getTableConfigs(
-      matchedCasinoId,
-      uniqueGameIds as string[],
-    ),
-    this.repository.getTableFamilies(
-      uniqueGameIds as string[],
-    ),
-  ]);
-
-  tableConfigs =
-    tableConfigsResponse?.recordset ||
-    [];
-
-  tableFamilies =
-    tableFamiliesResponse?.recordset ||
-    [];
-}
-
-
-const missingGameIds = (
-  uniqueGameIds as string[]
-).filter((gameId) => {
-  const existsInConfig =
-    tableConfigs.some(
+  // ✅ MULTIPLE CASINOS + LOGS → FILTER
+  if (
+    !singleCasino &&
+    hasLogs &&
+    effectiveMatchedCasinoId
+  ) {
+    casinos = casinos.filter(
       (x: any) =>
-        `${x.operator_game_id}` ===
-        `${gameId}`,
-    );
-
-  return !existsInConfig;
-});
-
-console.log(
-  'MISSING GAME IDS:',
-  missingGameIds,
-);
-if (missingGameIds.length > 0) {
-  const fallbackResponse =
-    await this.repository.getDistinctTableConfig(
-      missingGameIds,
-    );
-
- const fallbackConfigs: any[] =
-  fallbackResponse?.recordset ||
-  [];
-
-  for (const row of fallbackConfigs) {
-    if (
-      !tableConfigs.some(
-        (x: any) =>
-          `${x.operator_game_id}` ===
-          `${row.operator_game_id}`,
-      )
-    ) {
-      tableConfigs.push(row);
-    }
-  }
-}
-
-
-const configMap = new Map(
-  tableConfigs.map(
-    (x: any) => [
-      x.operator_game_id,
-      x,
-    ],
-  ),
-);
-const familyMap = new Map<string, any[]>();
-
-for (const row of tableFamilies) {
-  const familyKey =
-    String(row.operator_game_id)
-      .match(/^\d+/)?.[0];
-
-  if (!familyKey) {
-    continue;
-  }
-
-  if (!familyMap.has(familyKey)) {
-    familyMap.set(
-      familyKey,
-      [],
+        `${x.casino_id}` ===
+        `${effectiveMatchedCasinoId}`,
     );
   }
 
-  (
-    familyMap.get(familyKey) as any[]
-  ).push(row);
-}
-console.log(
-  'TABLE FAMILIES COUNT =>',
-  tableFamilies.length,
-);
-
-const launchTable: any[] = [];
-
-for (const gameId of uniqueGameIds as string[]) {
-  const tableConfig: any =
-  configMap.get(gameId);
-
-  launchTable.push({
-    operator_game_id:
-      tableConfig?.operator_game_id ||
-      gameId,
-
-    table_name:
-      tableConfig?.table_name ||
-      null,
-
-    table_id:
-      tableConfig?.table_id ||
-      null,
-  });
-}
-
-const responseLogs = Array.from(
-  new Map(
-    [
-      ...logsToCheck,
-      ...fullLogs,
-    ].map((log: any) => [
-      log?._id ||
-        `${log?.['@timestamp']}_${log?.message}`,
-      log,
-    ]),
-  ).values(),
-);
-
+  // ✅ MULTIPLE + NO LOGS → DO NOTHING ✅
+  // ✅ SINGLE CASINO → DO NOTHING ✅
+  const responseLogs = Array.from(
+    new Map(
+      [
+        ...logsToCheck,
+        ...fullLogs,
+      ].map((log: any) => [
+        log?._id ||
+          `${log?.['@timestamp']}_${log?.message}`,
+        log,
+      ]),
+    ).values(),
+  );
 
   const platformLogs =
     responseLogs.filter(
@@ -2976,236 +1737,59 @@ const responseLogs = Array.from(
         ),
     );
 
-const has521 =
-  this.has521Error(
-    lcLogs,
-  );
+  const noLogsFound =
+    platformLogs.length === 0 &&
+    lcLogs.length === 0;
 
   console.log(
-  'LC LOG COUNT:',
-  lcLogs.length,
-);
-
-
-console.log(
-  'HAS 521:',
-  has521,
-);
-
-let platformConfig = null;
-let platformConfigInfo: any = [];
-let matchedCasinoConfig: any = null;
-if (casinos.length === 1) {
-  platformConfig =
-    await this.getCasinoPlatformConfig(
-      casinos[0].casino_id,
-    );
-
-console.log(
-  'PLATFORM CONFIG SUCCESS:',
-  platformConfig?.success,
-);
-
-console.log(
-  'PLATFORM CONFIG MESSAGE:',
-  platformConfig?.message,
-);
-
-console.log(
-  'CASINO CONFIGURATIONS EXISTS:',
-  !!platformConfig?.data?.casinoConfigurations,
-);
-
-  const targetCasinoId =
-    this.extractCasinoId(
-      casinos[0].casino_id,
-    );
-
- matchedCasinoConfig =
-  platformConfig?.data?.casinoConfigurations?.find(
-    (x: any) =>
-      Number(x.casinoID) ===
-      Number(targetCasinoId),
+    'NO LOGS FOUND:',
+    noLogsFound,
   );
 
-      console.log(
-  'MATCHED CASINO CONFIG FOUND:',
-  !!matchedCasinoConfig,
-);
-
-console.log(
-  'TARGET CASINO ID:',
-  targetCasinoId,
-);
-
-console.log(
-  'PLATFORM CONFIG COUNT:',
-  platformConfig?.data?.casinoConfigurations?.length,
-);
-
-console.log(
-  'MATCHED CASINO CONFIG:',
-  JSON.stringify(matchedCasinoConfig),
-);
-
-  platformConfigInfo =
-    this.populatePlatformConfigInfo(
-      matchedCasinoConfig,
+  const has521 =
+    this.has521Error(
+      lcLogs,
     );
-
     console.log(
-  'MATCHED CASINO CONFIG FOUND:',
-  !!matchedCasinoConfig,
-);
-
-console.log(
-  'TARGET CASINO ID:',
-  targetCasinoId,
-);
-
-console.log(
-  'PLATFORM CONFIG COUNT:',
-  platformConfig?.data?.casinoConfigurations?.length,
-);
-
-console.log(
-  'MATCHED CASINO CONFIG:',
-  JSON.stringify(matchedCasinoConfig),
-);
-}
-const tableConfigEventMap =
-  new Map<string, any[]>();
- for (const log of prohibitedJurisdictionLogs) {
-  const text = [
-    log?.message,
-    log?.requestLog,
-    log?.responseLog,
-    log?.error,
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const sessionId =
-    log?.contextMap?.uuid ||
-    log?.contextMap?.['uuid:'] ||
-    '';
-
-  const relatedLogs =
-    logsToCheck.filter((x: any) => {
-      const otherSessionId =
-        x?.contextMap?.uuid ||
-        x?.contextMap?.['uuid:'] ||
-        '';
-
-      return (
-        sessionId &&
-        otherSessionId === sessionId
-      );
-    });
-
-  const relatedText =
-    [
-      text,
-      ...relatedLogs.map((x: any) =>
-        [
-          x?.message,
-          x?.requestLog,
-          x?.responseLog,
-          x?.error,
-        ]
-          .filter(Boolean)
-          .join(' '),
-      ),
-    ].join(' ');
-
-  const operatorGameId =
-    relatedText.match(/gameid=(\d+)/i)?.[1] ||
-    relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
-    relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-    uuidGameMap.get(sessionId) ||
-    '';
-
-  const playerIp =
-    relatedText.match(
-      /"ipAddress":"([^"]+)"/,
-    )?.[1] || '';
-
-  const playerCountry =
-    relatedText.match(
-      /"ipCountry":"([^"]+)"/,
-    )?.[1] || '';
-
-  const playerRegion =
-    relatedText.match(
-      /"ipRegion":"([^"]+)"/,
-    )?.[1] || '';
-
-  const prohibitedMessage =
-    relatedText.includes(
-      'IP is not allowed for blocked country',
-    )
-      ? 'IP is not allowed for blocked country'
-      : relatedText.includes(
-          'Auth error jurisdiction',
-        )
-        ? 'Auth error jurisdiction'
-        : log?.message ||
-          'You are not allowed to play Live Dealer';
-
-  this.pushTableConfigEvent(
-    tableConfigEventMap,
-    operatorGameId,
-    {
-      timestamp:
-        log?.['@timestamp'] || '',
-
-      player_ip:
-        playerIp,
-
-      player_country:
-        playerCountry,
-
-      player_region:
-        playerRegion,
-
-      session_id:
-        sessionId,
-
-      lc_level_block:
-        true,
-
-      block_level:
-        'LC',
-
-      recommendation:
-        'Player is blocked at LC level due to prohibited jurisdiction.',
-
-      prohibited_message:
-        prohibitedMessage,
-    },
+    'LC LOG COUNT:',
+    lcLogs.length,
   );
-}
-
-if (
-  has521 &&
-  casinos.length === 1
-) {
-  
-  const jurisdictionSettings =
-  matchedCasinoConfig?.configuration
-    ?.jurisdictionSettings;
-
-const countrySettings =
-  matchedCasinoConfig?.configuration
-    ?.countrySettings;
-
-const regionSettings =
-  matchedCasinoConfig?.configuration
-    ?.regionSettings;
 
 
-const authLogs =
-  lcLogs.filter((log: any) => {
+  console.log(
+    'HAS 521:',
+    has521,
+  );
+
+  let platformConfig = null;
+  let matchedCasinoConfig: any = null;
+
+  if (casinos.length === 1) {
+    platformConfig =
+      await this.getCasinoPlatformConfig(
+        casinos[0].casino_id,
+      );
+
+    const targetCasinoId =
+      this.extractCasinoId(
+        casinos[0].casino_id,
+      );
+
+  matchedCasinoConfig =
+    platformConfig?.data?.casinoConfigurations?.find(
+      (x: any) =>
+        Number(x.casinoID) ===
+        Number(targetCasinoId),
+    );
+
+  }
+
+
+
+
+  const tableConfigEventMap =
+  new Map<string, any[]>();
+  for (const log of prohibitedJurisdictionLogs) {
     const text = [
       log?.message,
       log?.requestLog,
@@ -3215,126 +1799,334 @@ const authLogs =
       .filter(Boolean)
       .join(' ');
 
-    const errorCode =
-      this.extractErrorCodeFromText(
-        text,
-      );
+    const sessionId =
+      log?.contextMap?.uuid ||
+      log?.contextMap?.['uuid:'] ||
+      '';
 
-    return (
-      text.includes(
-        '/RGSGateway/UserAPI/',
-      ) &&
-      errorCode === 521 &&
-      text.includes(
-        'Unsupported jurisdiction',
+    const relatedLogs =
+      logsToCheck.filter((x: any) => {
+        const otherSessionId =
+          x?.contextMap?.uuid ||
+          x?.contextMap?.['uuid:'] ||
+          '';
+
+        return (
+          sessionId &&
+          otherSessionId === sessionId
+        );
+      });
+
+    const relatedText =
+      [
+        text,
+        ...relatedLogs.map((x: any) =>
+          [
+            x?.message,
+            x?.requestLog,
+            x?.responseLog,
+            x?.error,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        ),
+      ].join(' ');
+
+    const operatorGameId =
+      relatedText.match(/gameid=(\d+)/i)?.[1] ||
+      relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
+      relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+      parsed.symbol;
+
+    const playerIp =
+      relatedText.match(
+        /"ipAddress":"([^"]+)"/,
+      )?.[1] || '';
+
+    const playerCountry =
+      relatedText.match(
+        /"ipCountry":"([^"]+)"/,
+      )?.[1] || '';
+
+    const playerRegion =
+      relatedText.match(
+        /"ipRegion":"([^"]+)"/,
+      )?.[1] || '';
+
+    const prohibitedMessage =
+      relatedText.includes(
+        'IP is not allowed for blocked country',
       )
+        ? 'IP is not allowed for blocked country'
+        : relatedText.includes(
+            'Auth error jurisdiction',
+          )
+          ? 'Auth error jurisdiction'
+          : log?.message ||
+            'You are not allowed to play Live Dealer';
+
+    this.pushTableConfigEvent(
+      tableConfigEventMap,
+      operatorGameId,
+      {
+        timestamp:
+          log?.['@timestamp'] || '',
+
+        player_ip:
+          playerIp,
+
+        player_country:
+          playerCountry,
+
+        player_region:
+          playerRegion,
+
+        session_id:
+          sessionId,
+
+        lc_level_block:
+          true,
+
+        block_level:
+          'LC',
+
+        recommendation:
+          'Player is blocked at LC level due to prohibited jurisdiction.',
+
+        prohibited_message:
+          prohibitedMessage,
+      },
     );
-  });
-const uniqueFailures = Array.from(
-  new Map(
-    authLogs.map((authLog: any) => {
-      const authText = [
-        authLog?.message,
-        authLog?.requestLog,
-        authLog?.responseLog,
-        authLog?.error,
+  }
+
+  if (
+    has521 &&
+    casinos.length === 1
+  ) {
+    
+  const jurisdictionSettings =
+    matchedCasinoConfig?.configuration
+      ?.jurisdictionSettings;
+
+  const countrySettings =
+    matchedCasinoConfig?.configuration
+      ?.countrySettings;
+
+  const regionSettings =
+    matchedCasinoConfig?.configuration
+      ?.regionSettings;
+
+  const authLogs =
+    lcLogs.filter((log: any) => {
+      const text = [
+        log?.message,
+        log?.requestLog,
+        log?.responseLog,
+        log?.error,
       ]
         .filter(Boolean)
         .join(' ');
 
-      const sessionId =
-        authLog?.contextMap?.uuid ||
-        authLog?.contextMap?.['uuid:'] ||
-        '';
+      const errorCode =
+        this.extractErrorCodeFromText(
+          text,
+        );
 
-      const gameId =
-        authText.match(/"gameID":"([^"]+)"/)?.[1] ||
-        authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
-        uuidGameMap.get(sessionId) ||
-        '';
-
-      const playerIp =
-        authText.match(
-          /"ipAddress":"([^"]+)"/,
-        )?.[1] || '';
-
-      const playerCountry =
-        authText.match(
-          /"ipCountry":"([^"]+)"/,
-        )?.[1] || '';
-
-      const playerRegion =
-        authText.match(
-          /"ipRegion":"([^"]+)"/,
-        )?.[1] || '';
-
-      const timestamp =
-        authLog?.['@timestamp'] || '';
-
-      const prohibitedMessage =
-        authText.includes(
+      return (
+        text.includes(
+          '/RGSGateway/UserAPI/',
+        ) &&
+        errorCode === 521 &&
+        text.includes(
           'Unsupported jurisdiction',
         )
-          ? '521 : Unsupported jurisdiction'
-          : '521 : Unsupported jurisdiction';
+      );
+    });
+  const uniqueFailures = Array.from(
+    new Map(
+      authLogs.map((authLog: any) => {
+        const authText = [
+          authLog?.message,
+          authLog?.requestLog,
+          authLog?.responseLog,
+          authLog?.error,
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-      return [
-        `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
-        {
-          gameId,
-          playerIp,
-          playerCountry,
-          playerRegion,
-          sessionId,
-          timestamp,
-          prohibitedMessage,
-        },
-      ];
-    }),
-  ).values(),
-);
+        const gameId =
+          authText.match(/"gameID":"([^"]+)"/)?.[1] ||
+          authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+          parsed.symbol ||
+          '';
 
-console.log(
-  'AUTH LOGS COUNT:',
-  authLogs.length,
-);
+        const playerIp =
+          authText.match(
+            /"ipAddress":"([^"]+)"/,
+          )?.[1] || '';
 
-console.log(
-  'UNIQUE 521 FAILURES:',
-  uniqueFailures.length,
-);
+        const playerCountry =
+          authText.match(
+            /"ipCountry":"([^"]+)"/,
+          )?.[1] || '';
 
-for (const failure of uniqueFailures as any[]) {
+        const playerRegion =
+          authText.match(
+            /"ipRegion":"([^"]+)"/,
+          )?.[1] || '';
+
+        const sessionId =
+          authLog?.contextMap?.uuid ||
+          authLog?.contextMap?.['uuid:'] ||
+          '';
+
+        const timestamp =
+          authLog?.['@timestamp'] || '';
+
+        const prohibitedMessage =
+          authText.includes(
+            'Unsupported jurisdiction',
+          )
+            ? '521 : Unsupported jurisdiction'
+            : '521 : Unsupported jurisdiction';
+
+        return [
+          `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
+          {
+            gameId,
+            playerIp,
+            playerCountry,
+            playerRegion,
+            sessionId,
+            timestamp,
+            prohibitedMessage,
+          },
+        ];
+      }),
+    ).values(),
+  );
+
+  for (const failure of uniqueFailures as any[]) {
+    const analysis =
+      this.analyze521(
+        failure.playerCountry,
+        failure.playerRegion,
+        jurisdictionSettings,
+        countrySettings,
+        regionSettings,
+      );
+
+      this.pushTableConfigEvent(
+      tableConfigEventMap,
+      failure.gameId,
+      {
+        timestamp:
+          failure.timestamp,
+
+        player_ip:
+          failure.playerIp,
+
+        player_country:
+          failure.playerCountry,
+
+        player_region:
+          failure.playerRegion,
+
+        session_id:
+          failure.sessionId,
+
+        lc_level_block:
+          false,
+
+        block_level:
+          'PLATFORM',
+
+        recommendation:
+          analysis.recommendation,
+
+        prohibited_message:
+          failure.prohibitedMessage ||
+          '521 : Unsupported jurisdiction',
+      },
+    );
+  }
+
+  console.log(
+    'JURISDICTION SETTINGS:',
+    JSON.stringify(
+      jurisdictionSettings,
+    ),
+  );
+
+  console.log(
+    'COUNTRY SETTINGS:',
+    JSON.stringify(
+      countrySettings,
+    ),
+  );
+  console.log(
+    'REGION SETTINGS:',
+    JSON.stringify(
+      regionSettings,
+    ),
+  );
+
+  }
+  /*
+  else if (
+    noLogsFound &&
+    parsed.country &&
+    casinos.length === 1
+  ) {
+    console.log(
+      'RUNNING NO LOG COUNTRY ANALYSIS:',
+      parsed.country,
+    );
+
+
+    const jurisdictionSettings =
+    matchedCasinoConfig?.configuration
+      ?.jurisdictionSettings;
+
+  const countrySettings =
+    matchedCasinoConfig?.configuration
+      ?.countrySettings;
+
+  const regionSettings =
+    matchedCasinoConfig?.configuration
+      ?.regionSettings;
+
   const analysis =
     this.analyze521(
-      failure.playerCountry,
-      failure.playerRegion,
+      parsed.country,
+      '',
       jurisdictionSettings,
       countrySettings,
       regionSettings,
     );
-  
-    this.pushTableConfigEvent(
-    tableConfigEventMap,
-    failure.gameId,
-    {
-      timestamp:
-        failure.timestamp,
 
-      player_ip:
-        failure.playerIp,
+  console.log(
+    'NO LOG ANALYSIS:',
+    analysis,
+  );
+
+
+  this.pushTableConfigEvent(
+    tableConfigEventMap,
+    parsed.symbol,
+    {
+      timestamp: '',
+
+      player_ip: '',
 
       player_country:
-        failure.playerCountry,
+        parsed.country,
 
-      player_region:
-        failure.playerRegion,
+      player_region: '',
 
-      session_id:
-        failure.sessionId,
+      session_id: '',
 
-      lc_level_block:
-        false,
+      lc_level_block: false,
 
       block_level:
         'PLATFORM',
@@ -3343,891 +2135,2114 @@ for (const failure of uniqueFailures as any[]) {
         analysis.recommendation,
 
       prohibited_message:
-        failure.prohibitedMessage ||
-        '521 : Unsupported jurisdiction',
+        'No logs found. RCA based on platform configuration.',
     },
   );
-}
 
-console.log(
-  'JURISDICTION SETTINGS:',
-  JSON.stringify(
-    jurisdictionSettings,
-  ),
-);
-
-console.log(
-  'COUNTRY SETTINGS:',
-  JSON.stringify(
-    countrySettings,
-  ),
-);
-
-console.log(
-  'REGION SETTINGS:',
-  JSON.stringify(
-    regionSettings,
-  ),
-);
-}
+  }
+  */
 
   const casinoData: any[] = [];
 
   for (const casino of casinos) {
-    const tableInfo: any[] = [];
 
-    let firstResult: any =
-      null;
-       let ucidConfigErrors: any[] = [];
 
-      const [lcTables, platformGames] =
-  await Promise.all([
-    this.getLcEnabledTables(
-      casino.casino_id,
-      params.cookies || '',
-    ),
-    this.getCasinoGames(
-      casino.casino_id,
-    ),
-  ]);
+    let casinoPlatformConfig: any = [];
 
-for (const gameId of uniqueGameIds as string[]) {
+    const casinoTableConfigEventMap =
+    new Map<string, any[]>();
 
-  const tableConfig =
-  configMap.get(
-    String(gameId),
-  ) || null;
+    for (const [
+    key,
+    value,
+  ] of tableConfigEventMap.entries()) {
+    casinoTableConfigEventMap.set(
+      key,
+      [...value],
+    );
+  }
 
-const baseFamily =
-  String(gameId)
-    .match(/^\d+/)?.[0] ||
-  String(gameId);
-
-const tableFamily =
-  familyMap.get(
-    baseFamily,
-  ) || [];
-const result =
-  this.buildCasinoResult(
-    casino,
-    String(gameId),
-    tableConfig,
-    tableFamily,
-    lcTables,
-    platformGames,
-    lcBlockedCountryMap,
-    launchedGameIds,
-    launchFailureMap,
-  );
-
-      if (!firstResult) {
-        firstResult =
-          result;
-      }
-
-      tableInfo.push(
-        ...result.table_info,
-      );
-    }
-
-    console.log(
-  'FIRST RESULT UCID:',
-  firstResult?.ucid,
-);
-
-console.log(
-  'TYPE OF UCID:',
-  typeof firstResult?.ucid,
-);
-
-// Fetch UCID mapping errors once per casino//
-const ucidToSearch =
-  casino?.ucid ||
-  firstResult?.ucid;
-
-console.log(
-  'UCID USED FOR SEARCH:',
-  ucidToSearch,
-);
-
-if (ucidToSearch) {
   try {
-    const ucidLogs =
-      await this.repository.searchCasinoMappingErrors({
-        ucId: String(ucidToSearch),
-        from,
-        to,
-      });
+    const platformConfig =
+      await this.getCasinoPlatformConfig(
+        casino.casino_id,
+      );
 
-    ucidConfigErrors =
-      (ucidLogs || []).map(
-        (log: any) => ({
+    const targetCasinoId =
+      this.extractCasinoId(
+        casino.casino_id,
+      );
+
+  matchedCasinoConfig =
+    platformConfig?.data?.casinoConfigurations?.find(
+      (x: any) =>
+        Number(x.casinoID) ===
+        Number(targetCasinoId),
+    );
+
+
+
+    casinoPlatformConfig =
+      this.populatePlatformConfigInfo(
+        matchedCasinoConfig,
+      );
+
+  if (
+    noLogsFound &&
+    parsed.country
+  ) {
+    const analysis =
+      this.analyze521(
+        parsed.country,
+        '',
+        matchedCasinoConfig?.configuration
+          ?.jurisdictionSettings,
+        matchedCasinoConfig?.configuration
+          ?.countrySettings,
+        matchedCasinoConfig?.configuration
+          ?.regionSettings,
+      );
+
+    this.pushTableConfigEvent(
+      casinoTableConfigEventMap,
+      parsed.symbol,
+      {
+        timestamp: '',
+        player_ip: '',
+        player_country: parsed.country,
+        player_region: '',
+        session_id: '',
+        lc_level_block: false,
+        block_level: 'PLATFORM',
+        recommendation:
+          analysis.recommendation,
+        prohibited_message:
+          'No logs found. RCA based on platform configuration.',
+      },
+    );
+  }
+
+  } catch (error) {
+    casinoPlatformConfig = [];
+  }
+
+  const [lcTables, platformGames] =
+    await Promise.all([
+      this.getLcEnabledTables(
+        casino.casino_id,
+        params.cookies || '',
+      ),
+      this.getCasinoGames(
+        casino.casino_id,
+      ),
+    ]);
+  const launchedGameIds =
+    new Set([parsed.symbol]);
+
+  const result =
+    this.buildCasinoResult(
+      casino,
+      parsed.symbol,
+      tableConfig,
+      tableFamily,
+      lcTables,
+      platformGames,
+      lcBlockedCountryMap,
+      launchedGameIds,
+      launchFailureMap,
+    );
+
+    let ucidConfigErrors: any[] = [];
+    if (result?.ucid) {
+    try {
+      const ucidLogs =
+        await this.repository.searchCasinoMappingErrors({
+          ucId: String(result.ucid),
+          from,
+          to,
+        });
+
+      ucidConfigErrors =
+        (ucidLogs || []).map(
+          (log: any) => ({
+            timestamp:
+              log?.['@timestamp'] || '',
+
+            message:
+              log?.message || '',
+          }),
+        );
+    } catch (error: any) {
+      ucidConfigErrors = [
+        {
           timestamp:
-            log?.['@timestamp'] || '',
+            new Date().toISOString(),
 
           message:
-            log?.message || '',
-        }),
-      );
-  } catch (error: any) {
-    ucidConfigErrors = [
-      {
-        timestamp:
-          new Date().toISOString(),
-
-        message:
-          'Merged Lobby config error check timed out. If required, please check filebeat-live logs manually.',
-      },
-    ];
+            'Merged Lobby config error check timed out. If required, please check filebeat-live logs manually.',
+        },
+      ];
+    }
   }
-}
-    const uniqueTableInfo =
-      tableInfo.filter(
-        (
-          table,
-          index,
-          self,
-        ) =>
-          index ===
-          self.findIndex(
-            (x) =>
-              x.operator_game_id ===
-              table.operator_game_id,
-          ),
-      );
-
-      const uniqueTableInfoWithConfig =
-  this.attachTableConfigEvents(
-    uniqueTableInfo,
-    tableConfigEventMap,
-  );
-
-    const casinoPlatformLogs =
-      platformLogs.filter(
-        (log: any) =>
-          this.casinoMatches(
-            casino.casino_id,
-            log?.app?.casinoID,
-          ),
-      );
-
-    const casinoLcLogs =
-      lcLogs.filter(
-        (log: any) =>
-          log?.contextMap
-            ?.casinoId ===
+  const casinoPlatformLogs =
+    platformLogs.filter(
+      (log: any) =>
+        this.casinoMatches(
           casino.casino_id,
-      );
+          log?.app?.casinoID,
+        ),
+    );
 
-    casinoData.push({
-      casino_id:
+  const casinoLcLogs =
+    lcLogs.filter(
+      (log: any) =>
+        log?.contextMap?.casinoId ===
         casino.casino_id,
+    );
 
-      casino_desc:
-        casino.casino_desc,
+  const tableInfoWithConfig =
+    this.attachTableConfigEvents(
+      result.table_info,
+      casinoTableConfigEventMap,
+    );
 
-   env_name:
-  firstResult?.env_name ||
-  casino.env ||
-  '',
+  casinoData.push({
+    casino_id:
+      result.casino_id,
 
-ucid:
-  firstResult?.ucid ||
-  casino.ucid ||
-  '',
-      casino_active_flag:
-        casino.active_flag,
-   config_error: [
-  ...configErrors,
-  ...ucidConfigErrors,
-],
+    casino_desc:
+      result.casino_desc,
 
-platform_config:
-  platformConfigInfo,
+    env_name:
+      result.env_name,
 
-table_info:
-  uniqueTableInfoWithConfig,
-
-      log_info: [
-        {
-          log_type:
-            'PLATFORM',
-
-          logs:
-            this.mapLogs(
-              casinoPlatformLogs,
-            ),
-        },
-
-        {
-          log_type:
-            'LC',
-
-          logs:
-            this.mapLogs(
-              casinoLcLogs,
-            ),
-        },
-      ],
-    });
-  }
-const totalTime =
-  Date.now() -
-  investigationStart;
-
-console.log(
-  'SESSION INVESTIGATION TOTAL TIME:',
-  totalTime,
-  'ms',
-);
-
-return {
-  success: true,
-  processing_time_ms:
-  totalTime,
-
-  duration: {
-    from,
-    to,
-  },
-
-  parsed: {
-    type:
-      'SESSION_ANALYSIS',
-
-    token:
-      params.token,
-  },
-
-  casinos:
-    casinoData,
-};
-}
-  // =====================================================
-  // BUILD CASINO RESULT
-// =====================================================
-// ✅ FINAL BUILD CASINO RESULT
-// =====================================================
-private buildCasinoResult(
-  casino: any,
-  symbol: string,
-  tableConfig: any,
-  tableFamily: any[],
-  lcTables: any[],
-  platformGames: any,
-  lcBlockedCountryMap: Map<string, any[]>,
-  launchedGameIds: Set<string>,
-  launchFailureMap: Map<string, boolean>,
-)
-{
-  const casinoId =
-    casino.casino_id;
-
-  const games =
-    platformGames?.data?.games || [];
-
-  const baseFamily =
-    symbol.match(/^\d+/)?.[0] ||
-    symbol;
-    
-const lcGameIds =
-  lcTables.map(
-    (x: any) =>
-      `${x.operator_game_id}`,
-  );
-
-console.log(
-  'CASINO ID =>',
-  casinoId,
-);
-
-console.log(
-  'BASE FAMILY =>',
-  baseFamily,
-);
-
-return {
-  casino_id: casinoId,
-
-  casino_desc:
-    casino.casino_desc ||
-    casino.email_address,
-
-  env_name:
-    platformGames?.env ||
-    casino?.env ||
-    '',
-
-  ucid:
-    platformGames?.UCID ||
-    casino?.ucid ||
-    '',
+    ucid:
+      result.ucid,
 
     casino_active_flag:
-      casino.active_flag,
- table_info: [
- {
-  is_base_table: true,
+      result.casino_active_flag,
 
-  is_launched:
-    launchedGameIds.has(
-      String(baseFamily),
-    ),
+    config_error: [
+      ...configErrors,
+      ...ucidConfigErrors,
+    ],
 
- has_launch_failed: (() => {
-  const key =
-    `${casinoId}_${baseFamily}`;
+  platform_config:
+    casinoPlatformConfig,
 
-  const value =
-    launchFailureMap.get(key) ||
-    false;
+    table_info:
+      tableInfoWithConfig,
+
+    log_info: [
+      {
+        log_type:
+          'PLATFORM',
+
+        logs:
+          this.mapLogs(
+            casinoPlatformLogs,
+          ),
+      },
+
+      {
+        log_type:
+          'LC',
+
+        logs:
+          this.mapLogs(
+            casinoLcLogs,
+          ),
+      },
+    ],
+  });
+  }
+
+    // =====================================================
+    // ✅ FINAL RESPONSE
+    // =====================================================
+  // ===============================
+  // STEP 3: GAME DETAILS ARRAY   PUT IT HERE
+  // ===============================
+  const launchTable = [
+    {
+      operator_game_id:
+        tableConfig?.operator_game_id ||
+        parsed.symbol,
+
+      table_name:
+        tableConfig?.table_name ||
+        null,
+
+      table_id:
+        tableConfig?.table_id ||
+        null,
+    },
+  ];
+
+  // THEN return
+  return {
+    success: true,
+
+    duration: {
+      from,
+      to,
+    },
+
+    parsed,
+
+    casinos:
+      casinoData,
+  };
+  }
+
+  // Session or Token Based Investigation
+  async investigateSession(params: {
+    token: string;
+    startDate?: string;
+    endDate?: string;
+    cookies?: string;
+  }) {
+
+    const investigationStart =
+    Date.now();
+
+    const from =
+      params.startDate ||
+      dayjs()
+        .subtract(24, 'hour')
+        .toISOString();
+
+    const to =
+      params.endDate ||
+      dayjs().toISOString();
+
+  const rawToken =
+    params.token;
+
+  const encodedToken =
+    encodeURIComponent(
+      rawToken,
+    );
+
+    console.log(
+    'TOKEN:',
+    params.token,
+  );
 
   console.log(
-    'HAS_LAUNCH_FAILED_CHECK',
-    {
-      key,
-      value,
-      availableKeys: Array.from(
-        launchFailureMap.keys(),
-      ),
-    },
+    'ENCODED TOKEN:',
+    encodedToken,
   );
 
-  return value;
-})(),
+  const [
+    encodedLogs,
+    rawLogs,
+  ] = await Promise.all([
+    this.repository.searchAllLogsByToken({
+      token: encodedToken,
+      from,
+      to,
+    }),
 
-  base_table_id: baseFamily,
+    this.repository.searchAllLogsByToken({
+      token: rawToken,
+      from,
+      to,
+    }),
+  ]);
 
-  operator_game_id: baseFamily,
-  table_name: this.getGameDisplayName(
-    baseFamily,
-    tableConfig?.table_name ||
-      tableFamily?.[0]?.table_name,
-  ) || null,
-
-    platform_enabled:
-      games.some(
-        (x: any) =>
-          `${x.gameID}` ===
-          `${baseFamily}`,
+  const fullLogs = Array.from(
+    new Map(
+      [...encodedLogs, ...rawLogs].map(
+        (log: any) => [
+          log._id,
+          log,
+        ],
       ),
+    ).values(),
+  );
 
-    lc_enabled:
-      lcGameIds.includes(
-        `${baseFamily}`,
-      ),
- lc_blocked_countries:
-    lcBlockedCountryMap.get(
-      baseFamily,
-    ) || [],
+  console.log(
+    'ENCODED LOGS:',
+    encodedLogs.length,
+  );
 
-    table_config:
-      [],
-  },
+  console.log(
+    'RAW LOGS:',
+    rawLogs.length,
+  );
 
-  ...tableFamily
-    .filter(
-      (table: any) =>
-        table.operator_game_id !==
-        baseFamily,
-    )
- .map(
-  (table: any) => ({
-    is_base_table: false,
+  console.log(
+    'FULL LOGS AFTER DEDUPE:',
+    fullLogs.length,
+  );
 
-    is_launched:
-      launchedGameIds.has(
-        String(table.operator_game_id),
-      ),
+    console.log(
+      'FULL TOKEN LOGS:',
+      fullLogs.length,
+    );
 
-    has_launch_failed:
-      launchFailureMap.get(
-        `${casinoId}_${table.operator_game_id}`,
-      ) || false,
-
-  base_table_id: baseFamily,
-
-  operator_game_id:
-    table.operator_game_id,
-
-  table_name: this.getGameDisplayName(
-    String(table.operator_game_id),
-    table.table_name,
-  ),
-
-        platform_enabled:
-          games.some(
-            (x: any) =>
-              `${x.gameID}` ===
-              `${table.operator_game_id}`,
-          ),
-
-        lc_enabled:
-          lcGameIds.includes(
-            `${table.operator_game_id}`,
-          ),
-           lc_blocked_countries: [],
-
-        table_config:
-          [],
-      }),
+    const getUUID = (log: any) => {
+      return (
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'] ||
+        null
+      );
+    };
+  const uuids = [
+    ...new Set(
+      fullLogs
+        .map((x: any) =>
+          getUUID(x),
+        )
+        .filter(Boolean),
     ),
-],
-  };
-}
+  ];
 
-//Push table config evnet//
-private pushTableConfigEvent(
-  tableConfigEventMap: Map<string, any[]>,
-  operatorGameId: string,
-  event: any,
-) {
-  if (!operatorGameId) {
-    return;
-  }
-
-  const key = `${operatorGameId}`;
-
-  if (!tableConfigEventMap.has(key)) {
-    tableConfigEventMap.set(key, []);
-  }
-
-  const existingEvents =
-    tableConfigEventMap.get(key) || [];
-
-  const uniqueKey =
-    `${operatorGameId}_${event.player_ip || ''}_${event.player_country || ''}_${event.player_region || ''}_${event.session_id || ''}_${event.block_level || ''}`;
-
-  const alreadyExists =
-    existingEvents.some(
-      (x: any) =>
-        `${operatorGameId}_${x.player_ip || ''}_${x.player_country || ''}_${x.player_region || ''}_${x.session_id || ''}_${x.block_level || ''}` ===
-        uniqueKey,
-    );
-
-  if (!alreadyExists) {
-    existingEvents.push(event);
-  }
-
-  tableConfigEventMap.set(
-    key,
-    existingEvents,
+  console.log(
+    'ALL UUIDS:',
+    uuids,
   );
-}
 
-private attachTableConfigEvents(
-  tableInfo: any[],
-  tableConfigEventMap: Map<string, any[]>,
-) {
-  return tableInfo.map((table: any) => {
-    const operatorGameId =
-      `${table.operator_game_id}`;
-
-    const tableConfigEvents =
-      tableConfigEventMap.get(operatorGameId) ||
-      [];
-
-    return {
-      ...table,
-
-      table_config:
-        tableConfigEvents.sort(
-          (a: any, b: any) =>
-            new Date(a.timestamp || 0).getTime() -
-            new Date(b.timestamp || 0).getTime(),
-        ),
-    };
-  });
-}
-  // =====================================================
-  // FILTER GAME LAUNCH LOGS
-  // =====================================================
-
-  private filterGameLaunchLogs(
-    logs: any[],
-    token: string,
-  ) {
-    return this.dedupeByTimestampAndMessage(
-      logs.filter((log: any) => {
-        const combined =
-          JSON.stringify(log);
-
-        return combined.includes(
-          token,
-        );
-      }),
+  const uuidResults =
+    await Promise.all(
+      uuids.map((uuid) =>
+        this.repository.searchLogsByUUID({
+          uuid,
+          from,
+          to,
+        }),
+      ),
     );
-  }
 
-  // =====================================================
-  // URL PARSER
-  // =====================================================
-
-  private parseUrl(
-    url: string,
-  ): ParsedGameLaunchUrl {
-    if (
-      url.includes(
-        'playGame.do',
-      )
-    ) {
-      return this.parsePlayGameUrl(
-        url,
-      );
-    }
-
-    if (
-      url.includes(
-        'openGame.do',
-      )
-    ) {
-      return this.parseOpenGameUrl(
-        url,
-      );
-    }
-
-    return this.parseGameLaunch(
-      url,
-    );
-  }
-
-  private parsePlayGameUrl(
-    url: string,
-  ): ParsedGameLaunchUrl {
-    const parsed =
-      new URL(url);
-const rawKey = decodeURIComponent(
-  parsed.searchParams.get('key') || '',
-);
-
-// ✅ EXTRA CLEAN (THIS FIXES YOUR CURRENT BUG)
-const cleanedKey = rawKey.replace(/&amp;/g, '&');
-
-const keyMap: any = {};
-
-// ✅ FORMAT 1: `|`
-if (cleanedKey.includes('`|`')) {
-  cleanedKey.split('`|`').forEach((x) => {
-    const [k, v] = x.split('=');
-    keyMap[k] = v;
-  });
-}
-
-// ✅ FORMAT 2: &
-else if (cleanedKey.includes('&')) {
-  const params = new URLSearchParams(cleanedKey);
-
-  params.forEach((value, key) => {
-    keyMap[key] = value;
-  });
-}
-
-// ✅ ✅ CRITICAL: SAFE TOKEN EXTRACTION (no corruption possible)
-// ✅ ✅ UNIVERSAL SAFE TOKEN EXTRACTION (handles all Pragmatic formats)
-let safeToken = '';
-
-// ✅ FORMAT 1: `|`
-if (cleanedKey.includes('`|`')) {
-  cleanedKey.split('`|`').forEach((x) => {
-    const [k, v] = x.split('=');
-    if (k === 'token') {
-      safeToken = v;
-    }
-  });
-}
-
-// ✅ FORMAT 2: & (URL-style)
-else if (cleanedKey.includes('&')) {
-  const params = new URLSearchParams(cleanedKey);
-  safeToken = params.get('token') || '';
-}
-
-// ✅ FALLBACK (extra safety)
-if (!safeToken) {
-  const match = cleanedKey.match(/token=([^`|&]+)/);
-  safeToken = match ? match[1] : '';
-}
-
-// ✅ FINAL CLEAN
-safeToken = safeToken.trim();
-
-return {
-  type: 'PLAY_GAME',
-
-  stylename: parsed.searchParams.get('stylename') || '',
-
-  user_id: (parsed.searchParams.get('userId') || '')
-    .replace(/"/g, '')
-    .trim(),
-
-  ppkv: parsed.searchParams.get('ppkv') || '',
-  country: parsed.searchParams.get('country') || '',
-
-  token: safeToken, // ✅ CORRECTED TOKEN
-
-  symbol:
-    keyMap.symbol ||
-    parsed.searchParams.get('symbol') ||
-    '',
-};
-  }
-private parseOpenGameUrl(
-  url: string,
-): ParsedGameLaunchUrl {
-  const parsed = new URL(url);
-
-  return {
-    type: 'OPEN_GAME',
-
-    stylename:
-      parsed.searchParams.get('stylename') || '',
-
-    symbol:
-      parsed.searchParams.get('symbol') || '',
-
-    tc:
-      parsed.searchParams.get('tc') || '',
-
-    country:
-      parsed.searchParams.get('country') || '',
-  };
-}
-
-  private parseGameLaunch(
-    url: string,
-  ): ParsedGameLaunchUrl {
-    const parsed =
-      new URL(url);
-
-    return {
-      type:
-        'GAME_LAUNCH',
-
-      secureLogin:
-        parsed.searchParams.get(
-          'secureLogin',
-        ) || '',
-
-      stylename:
-        parsed.searchParams.get(
-          'stylename',
-        ) || '',
-
-      gameid:
-        parsed.searchParams.get(
-          'gameid',
-        ) || '',
-
-      environmentID:
-        parsed.searchParams.get(
-          'environmentID',
-        ) || '',
-
-      ppToken:
-        parsed.searchParams.get(
-          'ppToken',
-        ) || '',
-
-      ppCasinoId:
-        parsed.searchParams.get(
-          'ppCasinoId',
-        ) || '',
-
-      symbol:
-        parsed.searchParams.get(
-          'gameid',
-        ) || '',
-
-        country:
-  parsed.searchParams.get(
-    'requestCountryCode',
-  ) || '',
-    };
-  }
-
-  // =====================================================
-  // DEDUPE
-  // =====================================================
-
-  private dedupeByTimestampAndMessage<
-    T extends {
-      timestamp?: string;
-      message?: string;
-    },
-  >(items: T[]): T[] {
-    const seen =
-      new Set<string>();
-
-    const result: T[] = [];
-
-    for (const item of items) {
-      const key =
-        `${item?.timestamp || ''}__${
-          item?.message || ''
-        }`;
-
-      if (seen.has(key)) {
-        continue;
-      }
-
-      seen.add(key);
-
-      result.push(item);
-    }
-
-    return result;
-  }
-
-  // =====================================================
-  // LOG MAPPER
-  // =====================================================
-private casinoMatches(
-  casinoId: string,
-  platformCasinoId: any,
-): boolean {
-  if (!casinoId || !platformCasinoId) {
-    return false;
-  }
-
-  const numericCasinoId =
-    casinoId.replace(/\D/g, '');
-
-  const platformId =
-    String(platformCasinoId)
-      .replace(/,/g, '');
-
-  return numericCasinoId.endsWith(
-    platformId,
+  const uuidLogs = Array.from(
+    new Map(
+      uuidResults
+        .flat()
+        .map((log: any) => [
+          log._id,
+          log,
+        ]),
+    ).values(),
   );
-}
 
-// =====================================================
-// PLATFORM LOG LEVEL
-// =====================================================
-private getPlatformLogLevel(
-  log: any,
-): string {
-  const responseText =
-    log?.app?.responseLog?.log;
+  console.log(
+    'UUID LOG COUNT:',
+    uuidLogs.length,
+  );
+    const logsToCheck = Array.from(
+    new Map(
+      [...fullLogs, ...uuidLogs].map(
+        (log: any) => [
+          log._id,
+          log,
+        ],
+      ),
+    ).values(),
+  );
 
-  if (responseText) {
-    try {
-      const parsed =
-        JSON.parse(responseText);
+  console.log(
+    'COMBINED LOG COUNT:',
+    logsToCheck.length,
+  );
+  const {
+    uuidGameMap,
+    uuidCasinoMap,
+    ppenvGameMap,
+  } = this.buildSessionMaps(
+    logsToCheck,
+  );
 
-      const error =
-        parsed?.error;
+  console.log(
+    'UUID GAME MAP:',
+    Array.from(uuidGameMap.entries()),
+  );
+
+  console.log(
+    'UUID CASINO MAP:',
+    Array.from(uuidCasinoMap.entries()),
+  );
+
+  const ppenvCasinoMap =
+    this.buildPpenvCasinoMap(
+      [...fullLogs, ...logsToCheck],
+    );
+
+  console.log(
+    'PPENV CASINO MAP:',
+    Array.from(
+      ppenvCasinoMap.entries(),
+    ),
+  );
+
+  const launchFailureMap =
+    this.buildLaunchFailureMap(
+      logsToCheck,
+      uuidGameMap,
+      uuidCasinoMap,
+      ppenvCasinoMap,
+      ppenvGameMap,
+    );
+
+  console.log(
+    'LAUNCH FAILURE MAP:',
+    Array.from(
+      launchFailureMap.entries(),
+    ),
+  );
+
+  const configErrorLogs =
+    logsToCheck.filter((log: any) => {
+      const msg =
+        log?.message ||
+        log?.error ||
+        JSON.stringify(log);
 
       return (
-        error === 0 ||
-        error === '0' ||
-        error === null
-      )
-        ? 'SUCCESS'
-        : 'ERROR';
-    } catch {
-      return 'ERROR';
+        msg.includes(
+          'Impl not found',
+        ) ||
+        msg.includes(
+          'Missing Impl for casino',
+        ) ||
+        msg.includes(
+          'Operator OWC is not correct',
+        )
+      );
+    });
+
+  const isConfigIssue =
+    configErrorLogs.length > 0;
+
+    console.log(
+      'CONFIG ISSUE:',
+      isConfigIssue,
+    );
+
+  const configErrors =
+    configErrorLogs.map((log: any) => ({
+      timestamp:
+        log?.['@timestamp'] || '',
+
+      message:
+        log?.message ||
+        log?.error ||
+        '',
+    }));
+  let prohibitedJurisdictionLogs: any[] = [];
+  prohibitedJurisdictionLogs =
+    logsToCheck.filter((log: any) => {
+      const msg = [
+        log?.message,
+        log?.requestLog,
+        log?.responseLog,
+        log?.error,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const errorCode =
+        this.extractErrorCodeFromText(
+          msg,
+        );
+
+      const uuid =
+        log?.contextMap?.uuid ||
+        log?.contextMap?.['uuid:'] ||
+        '';
+
+      const hasError0InSameSession =
+        errorCode === 0 ||
+        logsToCheck.some((x: any) => {
+          const otherUuid =
+            x?.contextMap?.uuid ||
+            x?.contextMap?.['uuid:'] ||
+            '';
+
+          if (
+            uuid &&
+            otherUuid &&
+            uuid !== otherUuid
+          ) {
+            return false;
+          }
+
+          const otherText = [
+            x?.message,
+            x?.requestLog,
+            x?.responseLog,
+            x?.error,
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          return (
+            this.extractErrorCodeFromText(
+              otherText,
+            ) === 0
+          );
+        });
+
+      const hasLcBlockMessage =
+        msg.includes(
+          'Prohibited Jurisdictions',
+        ) ||
+        msg.includes(
+          'You are not allowed to play Live Dealer',
+        ) ||
+        msg.includes(
+          'Auth error jurisdiction',
+        ) ||
+        msg.includes(
+          'IP is not allowed for blocked country',
+        );
+
+      return (
+        hasError0InSameSession &&
+        hasLcBlockMessage
+      );
+    });
+
+  const uniqueGameIds = [
+    ...new Set(
+      logsToCheck
+        .map((log: any) => {
+          const text = [
+            log?.message,
+            log?.requestLog,
+            log?.responseLog,
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          return (
+            text.match(/"gameID":"([^"]+)"/)?.[1] ||
+            text.match(/"operatorGameId":"([^"]+)"/)?.[1]
+          );
+        })
+        .filter(Boolean),
+    ),
+  ];
+    console.log(
+      'UNIQUE GAME IDS:',
+      uniqueGameIds,
+    );
+
+    const baseGameIds = [
+    ...new Set(
+      (uniqueGameIds as string[]).map(
+        (gameId) =>
+          gameId.match(/^\d+/)?.[0] ||
+          gameId,
+      ),
+    ),
+  ];
+
+  console.log(
+    'BASE GAME IDS:',
+    baseGameIds,
+  );
+
+  const launchedGameIds =
+    new Set(
+      uniqueGameIds.map(String),
+    );
+
+  const blockedCountriesResponse =
+    baseGameIds.length > 0
+      ? await this.repository.getLcBlockedCountries(
+          baseGameIds,
+        )
+      : { recordset: [] };
+
+    const lcBlockedCountryMap =
+    new Map<string, any[]>();
+
+  for (
+    const row of (
+      blockedCountriesResponse?.recordset || []
+    ) as any[]
+  ) {
+    const key = String(
+      row.operator_game_id,
+    );
+
+    if (!lcBlockedCountryMap.has(key)) {
+      lcBlockedCountryMap.set(key, []);
+    }
+
+    lcBlockedCountryMap.get(key)?.push({
+      country_name: row.name,
+      country_code: row.country_code,
+    });
+  }
+
+  const casinoIdsFromLogs = [
+    ...new Set(
+      logsToCheck
+        .map(
+          (x: any) =>
+            x?.contextMap?.casinoId,
+        )
+        .filter(Boolean),
+    ),
+  ];
+  let casinos: any[] = [];
+  const matchedCasinoId =
+    casinoIdsFromLogs[0] || null;
+
+  console.log(
+    'CASINOS FOUND IN LOGS =>',
+    casinoIdsFromLogs,
+  );
+
+  console.log(
+    'CASINO COUNT =>',
+    casinoIdsFromLogs.length,
+  );
+
+
+  if (matchedCasinoId) {
+    const casinoDetails =
+      await this.repository.getCasinoDetails(
+        matchedCasinoId,
+      );
+
+  const dbCasino: any =
+    casinoDetails?.recordset?.[0];
+
+    console.log(
+    'DB CASINO DETAILS:',
+    JSON.stringify(dbCasino),
+  );
+  casinos = [
+    {
+      casino_id: matchedCasinoId,
+
+    casino_desc:
+    dbCasino?.casino_desc || '',
+
+      active_flag: null,
+
+      env:
+        dbCasino?.env || '',
+
+      ucid:
+        dbCasino?.UCID || '',
+    },
+  ];
+  }
+
+
+  let tableConfigs: any[] = [];
+  let tableFamilies: any[] = [];
+
+  if (
+    matchedCasinoId &&
+    uniqueGameIds.length > 0
+  ) {
+    const [
+      tableConfigsResponse,
+      tableFamiliesResponse,
+    ] = await Promise.all([
+      this.repository.getTableConfigs(
+        matchedCasinoId,
+        uniqueGameIds as string[],
+      ),
+      this.repository.getTableFamilies(
+        uniqueGameIds as string[],
+      ),
+    ]);
+
+    tableConfigs =
+      tableConfigsResponse?.recordset ||
+      [];
+
+    tableFamilies =
+      tableFamiliesResponse?.recordset ||
+      [];
+  }
+
+
+  const missingGameIds = (
+    uniqueGameIds as string[]
+  ).filter((gameId) => {
+    const existsInConfig =
+      tableConfigs.some(
+        (x: any) =>
+          `${x.operator_game_id}` ===
+          `${gameId}`,
+      );
+
+    return !existsInConfig;
+  });
+
+  console.log(
+    'MISSING GAME IDS:',
+    missingGameIds,
+  );
+  if (missingGameIds.length > 0) {
+    const fallbackResponse =
+      await this.repository.getDistinctTableConfig(
+        missingGameIds,
+      );
+
+  const fallbackConfigs: any[] =
+    fallbackResponse?.recordset ||
+    [];
+
+    for (const row of fallbackConfigs) {
+      if (
+        !tableConfigs.some(
+          (x: any) =>
+            `${x.operator_game_id}` ===
+            `${row.operator_game_id}`,
+        )
+      ) {
+        tableConfigs.push(row);
+      }
     }
   }
 
-  const httpErrorCode =
-    Number(
-      log?.app?.httpErrorCode,
+
+  const configMap = new Map(
+    tableConfigs.map(
+      (x: any) => [
+        x.operator_game_id,
+        x,
+      ],
+    ),
+  );
+  const familyMap = new Map<string, any[]>();
+
+  for (const row of tableFamilies) {
+    const familyKey =
+      String(row.operator_game_id)
+        .match(/^\d+/)?.[0];
+
+    if (!familyKey) {
+      continue;
+    }
+
+    if (!familyMap.has(familyKey)) {
+      familyMap.set(
+        familyKey,
+        [],
+      );
+    }
+
+    (
+      familyMap.get(familyKey) as any[]
+    ).push(row);
+  }
+  console.log(
+    'TABLE FAMILIES COUNT =>',
+    tableFamilies.length,
+  );
+
+  const launchTable: any[] = [];
+
+  for (const gameId of uniqueGameIds as string[]) {
+    const tableConfig: any =
+    configMap.get(gameId);
+
+    launchTable.push({
+      operator_game_id:
+        tableConfig?.operator_game_id ||
+        gameId,
+
+      table_name:
+        tableConfig?.table_name ||
+        null,
+
+      table_id:
+        tableConfig?.table_id ||
+        null,
+    });
+  }
+
+  const responseLogs = Array.from(
+    new Map(
+      [
+        ...logsToCheck,
+        ...fullLogs,
+      ].map((log: any) => [
+        log?._id ||
+          `${log?.['@timestamp']}_${log?.message}`,
+        log,
+      ]),
+    ).values(),
+  );
+
+
+    const platformLogs =
+      responseLogs.filter(
+        (log: any) =>
+          log?._index?.startsWith(
+            'filebeat-slots',
+          ),
+      );
+
+    const lcLogs =
+      responseLogs.filter(
+        (log: any) =>
+          !log?._index?.startsWith(
+            'filebeat-slots',
+          ),
+      );
+
+  const has521 =
+    this.has521Error(
+      lcLogs,
     );
 
-  return httpErrorCode === 200
-    ? 'SUCCESS'
-    : 'ERROR';
-}
-// =====================================================
-// LC LOG LEVEL
-// =====================================================
-private getLcLogLevel(
-  log: any,
-): string {
-  const text =
-    log?.message || '';
+    console.log(
+    'LC LOG COUNT:',
+    lcLogs.length,
+  );
 
-  if (text.includes('"error":0')) {
-    return 'SUCCESS';
+
+  console.log(
+    'HAS 521:',
+    has521,
+  );
+
+  let platformConfig = null;
+  let platformConfigInfo: any = [];
+  let matchedCasinoConfig: any = null;
+  if (casinos.length === 1) {
+    platformConfig =
+      await this.getCasinoPlatformConfig(
+        casinos[0].casino_id,
+      );
+
+  console.log(
+    'PLATFORM CONFIG SUCCESS:',
+    platformConfig?.success,
+  );
+
+  console.log(
+    'PLATFORM CONFIG MESSAGE:',
+    platformConfig?.message,
+  );
+
+  console.log(
+    'CASINO CONFIGURATIONS EXISTS:',
+    !!platformConfig?.data?.casinoConfigurations,
+  );
+
+    const targetCasinoId =
+      this.extractCasinoId(
+        casinos[0].casino_id,
+      );
+
+  matchedCasinoConfig =
+    platformConfig?.data?.casinoConfigurations?.find(
+      (x: any) =>
+        Number(x.casinoID) ===
+        Number(targetCasinoId),
+    );
+
+        console.log(
+    'MATCHED CASINO CONFIG FOUND:',
+    !!matchedCasinoConfig,
+  );
+
+  console.log(
+    'TARGET CASINO ID:',
+    targetCasinoId,
+  );
+
+  console.log(
+    'PLATFORM CONFIG COUNT:',
+    platformConfig?.data?.casinoConfigurations?.length,
+  );
+
+  console.log(
+    'MATCHED CASINO CONFIG:',
+    JSON.stringify(matchedCasinoConfig),
+  );
+
+    platformConfigInfo =
+      this.populatePlatformConfigInfo(
+        matchedCasinoConfig,
+      );
+
+      console.log(
+    'MATCHED CASINO CONFIG FOUND:',
+    !!matchedCasinoConfig,
+  );
+
+  console.log(
+    'TARGET CASINO ID:',
+    targetCasinoId,
+  );
+
+  console.log(
+    'PLATFORM CONFIG COUNT:',
+    platformConfig?.data?.casinoConfigurations?.length,
+  );
+
+  console.log(
+    'MATCHED CASINO CONFIG:',
+    JSON.stringify(matchedCasinoConfig),
+  );
+  }
+  const tableConfigEventMap =
+    new Map<string, any[]>();
+  for (const log of prohibitedJurisdictionLogs) {
+    const text = [
+      log?.message,
+      log?.requestLog,
+      log?.responseLog,
+      log?.error,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const sessionId =
+      log?.contextMap?.uuid ||
+      log?.contextMap?.['uuid:'] ||
+      '';
+
+    const relatedLogs =
+      logsToCheck.filter((x: any) => {
+        const otherSessionId =
+          x?.contextMap?.uuid ||
+          x?.contextMap?.['uuid:'] ||
+          '';
+
+        return (
+          sessionId &&
+          otherSessionId === sessionId
+        );
+      });
+
+    const relatedText =
+      [
+        text,
+        ...relatedLogs.map((x: any) =>
+          [
+            x?.message,
+            x?.requestLog,
+            x?.responseLog,
+            x?.error,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        ),
+      ].join(' ');
+
+    const operatorGameId =
+      relatedText.match(/gameid=(\d+)/i)?.[1] ||
+      relatedText.match(/"gameID":"([^"]+)"/)?.[1] ||
+      relatedText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+      uuidGameMap.get(sessionId) ||
+      '';
+
+    const playerIp =
+      relatedText.match(
+        /"ipAddress":"([^"]+)"/,
+      )?.[1] || '';
+
+    const playerCountry =
+      relatedText.match(
+        /"ipCountry":"([^"]+)"/,
+      )?.[1] || '';
+
+    const playerRegion =
+      relatedText.match(
+        /"ipRegion":"([^"]+)"/,
+      )?.[1] || '';
+
+    const prohibitedMessage =
+      relatedText.includes(
+        'IP is not allowed for blocked country',
+      )
+        ? 'IP is not allowed for blocked country'
+        : relatedText.includes(
+            'Auth error jurisdiction',
+          )
+          ? 'Auth error jurisdiction'
+          : log?.message ||
+            'You are not allowed to play Live Dealer';
+
+    this.pushTableConfigEvent(
+      tableConfigEventMap,
+      operatorGameId,
+      {
+        timestamp:
+          log?.['@timestamp'] || '',
+
+        player_ip:
+          playerIp,
+
+        player_country:
+          playerCountry,
+
+        player_region:
+          playerRegion,
+
+        session_id:
+          sessionId,
+
+        lc_level_block:
+          true,
+
+        block_level:
+          'LC',
+
+        recommendation:
+          'Player is blocked at LC level due to prohibited jurisdiction.',
+
+        prohibited_message:
+          prohibitedMessage,
+      },
+    );
   }
 
   if (
-    text.match(
-      /"error"\s*:\s*\d+/,
-    )
+    has521 &&
+    casinos.length === 1
   ) {
-    return 'ERROR';
-  }
+    
+    const jurisdictionSettings =
+    matchedCasinoConfig?.configuration
+      ?.jurisdictionSettings;
 
-  return 'INFO';
-}
+  const countrySettings =
+    matchedCasinoConfig?.configuration
+      ?.countrySettings;
+
+  const regionSettings =
+    matchedCasinoConfig?.configuration
+      ?.regionSettings;
 
 
-  private mapLogs(logs: any[]) {
-    return logs.map(
-      (log: any) => ({
-        _id:
-          log?._id || '',
+  const authLogs =
+    lcLogs.filter((log: any) => {
+      const text = [
+        log?.message,
+        log?.requestLog,
+        log?.responseLog,
+        log?.error,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
-        _index:
-          log?._index || '',
-      log_level:
-  log?._index?.startsWith(
-    'filebeat-slots',
-  )
-    ? this.getPlatformLogLevel(
-        log,
-      )
-    : this.getLcLogLevel(
-        log,
-      ),
+      const errorCode =
+        this.extractErrorCodeFromText(
+          text,
+        );
 
-        timestamp:
-          log?.[
-            '@timestamp'
-          ] || '',
+      return (
+        text.includes(
+          '/RGSGateway/UserAPI/',
+        ) &&
+        errorCode === 521 &&
+        text.includes(
+          'Unsupported jurisdiction',
+        )
+      );
+    });
+  const uniqueFailures = Array.from(
+    new Map(
+      authLogs.map((authLog: any) => {
+        const authText = [
+          authLog?.message,
+          authLog?.requestLog,
+          authLog?.responseLog,
+          authLog?.error,
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-        app:
-          log?.app || '',
+        const sessionId =
+          authLog?.contextMap?.uuid ||
+          authLog?.contextMap?.['uuid:'] ||
+          '';
 
-        service:
-          log?.service ||
-          '',
+        const gameId =
+          authText.match(/"gameID":"([^"]+)"/)?.[1] ||
+          authText.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+          uuidGameMap.get(sessionId) ||
+          '';
 
-        serviceName:
-          log?.serviceName ||
-          '',
+        const playerIp =
+          authText.match(
+            /"ipAddress":"([^"]+)"/,
+          )?.[1] || '';
 
-        serviceMethod:
-          log?.serviceMethod ||
-          '',
+        const playerCountry =
+          authText.match(
+            /"ipCountry":"([^"]+)"/,
+          )?.[1] || '';
 
-        stage:
-          log?.stage || '',
+        const playerRegion =
+          authText.match(
+            /"ipRegion":"([^"]+)"/,
+          )?.[1] || '';
 
-        error:
-          log?.error || '',
+        const timestamp =
+          authLog?.['@timestamp'] || '';
 
-        responseLog:
-          log?.responseLog ||
-          '',
+        const prohibitedMessage =
+          authText.includes(
+            'Unsupported jurisdiction',
+          )
+            ? '521 : Unsupported jurisdiction'
+            : '521 : Unsupported jurisdiction';
 
-        requestLog:
-          log?.requestLog ||
-          '',
-
-        host:
-          log?.host || '',
-
-        message:
-          log?.message ||
-          '',
-
-        contextMap:
-          log?.contextMap ||
-          {},
+        return [
+          `${gameId}_${playerIp}_${playerCountry}_${playerRegion}_${sessionId}_PLATFORM`,
+          {
+            gameId,
+            playerIp,
+            playerCountry,
+            playerRegion,
+            sessionId,
+            timestamp,
+            prohibitedMessage,
+          },
+        ];
       }),
+    ).values(),
+  );
+
+  console.log(
+    'AUTH LOGS COUNT:',
+    authLogs.length,
+  );
+
+  console.log(
+    'UNIQUE 521 FAILURES:',
+    uniqueFailures.length,
+  );
+
+  for (const failure of uniqueFailures as any[]) {
+    const analysis =
+      this.analyze521(
+        failure.playerCountry,
+        failure.playerRegion,
+        jurisdictionSettings,
+        countrySettings,
+        regionSettings,
+      );
+    
+      this.pushTableConfigEvent(
+      tableConfigEventMap,
+      failure.gameId,
+      {
+        timestamp:
+          failure.timestamp,
+
+        player_ip:
+          failure.playerIp,
+
+        player_country:
+          failure.playerCountry,
+
+        player_region:
+          failure.playerRegion,
+
+        session_id:
+          failure.sessionId,
+
+        lc_level_block:
+          false,
+
+        block_level:
+          'PLATFORM',
+
+        recommendation:
+          analysis.recommendation,
+
+        prohibited_message:
+          failure.prohibitedMessage ||
+          '521 : Unsupported jurisdiction',
+      },
     );
   }
-}
+
+  console.log(
+    'JURISDICTION SETTINGS:',
+    JSON.stringify(
+      jurisdictionSettings,
+    ),
+  );
+
+  console.log(
+    'COUNTRY SETTINGS:',
+    JSON.stringify(
+      countrySettings,
+    ),
+  );
+
+  console.log(
+    'REGION SETTINGS:',
+    JSON.stringify(
+      regionSettings,
+    ),
+  );
+  }
+
+    const casinoData: any[] = [];
+
+    for (const casino of casinos) {
+      const tableInfo: any[] = [];
+
+      let firstResult: any =
+        null;
+        let ucidConfigErrors: any[] = [];
+
+        const [lcTables, platformGames] =
+    await Promise.all([
+      this.getLcEnabledTables(
+        casino.casino_id,
+        params.cookies || '',
+      ),
+      this.getCasinoGames(
+        casino.casino_id,
+      ),
+    ]);
+
+  for (const gameId of uniqueGameIds as string[]) {
+
+    const tableConfig =
+    configMap.get(
+      String(gameId),
+    ) || null;
+
+  const baseFamily =
+    String(gameId)
+      .match(/^\d+/)?.[0] ||
+    String(gameId);
+
+  const tableFamily =
+    familyMap.get(
+      baseFamily,
+    ) || [];
+  const result =
+    this.buildCasinoResult(
+      casino,
+      String(gameId),
+      tableConfig,
+      tableFamily,
+      lcTables,
+      platformGames,
+      lcBlockedCountryMap,
+      launchedGameIds,
+      launchFailureMap,
+    );
+
+        if (!firstResult) {
+          firstResult =
+            result;
+        }
+
+        tableInfo.push(
+          ...result.table_info,
+        );
+      }
+
+      console.log(
+    'FIRST RESULT UCID:',
+    firstResult?.ucid,
+  );
+
+  console.log(
+    'TYPE OF UCID:',
+    typeof firstResult?.ucid,
+  );
+
+  // Fetch UCID mapping errors once per casino//
+  const ucidToSearch =
+    casino?.ucid ||
+    firstResult?.ucid;
+
+  console.log(
+    'UCID USED FOR SEARCH:',
+    ucidToSearch,
+  );
+
+  if (ucidToSearch) {
+    try {
+      const ucidLogs =
+        await this.repository.searchCasinoMappingErrors({
+          ucId: String(ucidToSearch),
+          from,
+          to,
+        });
+
+      ucidConfigErrors =
+        (ucidLogs || []).map(
+          (log: any) => ({
+            timestamp:
+              log?.['@timestamp'] || '',
+
+            message:
+              log?.message || '',
+          }),
+        );
+    } catch (error: any) {
+      ucidConfigErrors = [
+        {
+          timestamp:
+            new Date().toISOString(),
+
+          message:
+            'Merged Lobby config error check timed out. If required, please check filebeat-live logs manually.',
+        },
+      ];
+    }
+  }
+      const uniqueTableInfo =
+        tableInfo.filter(
+          (
+            table,
+            index,
+            self,
+          ) =>
+            index ===
+            self.findIndex(
+              (x) =>
+                x.operator_game_id ===
+                table.operator_game_id,
+            ),
+        );
+
+        const uniqueTableInfoWithConfig =
+    this.attachTableConfigEvents(
+      uniqueTableInfo,
+      tableConfigEventMap,
+    );
+
+      const casinoPlatformLogs =
+        platformLogs.filter(
+          (log: any) =>
+            this.casinoMatches(
+              casino.casino_id,
+              log?.app?.casinoID,
+            ),
+        );
+
+      const casinoLcLogs =
+        lcLogs.filter(
+          (log: any) =>
+            log?.contextMap
+              ?.casinoId ===
+            casino.casino_id,
+        );
+
+      casinoData.push({
+        casino_id:
+          casino.casino_id,
+
+        casino_desc:
+          casino.casino_desc,
+
+    env_name:
+    firstResult?.env_name ||
+    casino.env ||
+    '',
+
+  ucid:
+    firstResult?.ucid ||
+    casino.ucid ||
+    '',
+        casino_active_flag:
+          casino.active_flag,
+    config_error: [
+    ...configErrors,
+    ...ucidConfigErrors,
+  ],
+
+  platform_config:
+    platformConfigInfo,
+
+  table_info:
+    uniqueTableInfoWithConfig,
+
+        log_info: [
+          {
+            log_type:
+              'PLATFORM',
+
+            logs:
+              this.mapLogs(
+                casinoPlatformLogs,
+              ),
+          },
+
+          {
+            log_type:
+              'LC',
+
+            logs:
+              this.mapLogs(
+                casinoLcLogs,
+              ),
+          },
+        ],
+      });
+    }
+  const totalTime =
+    Date.now() -
+    investigationStart;
+
+  console.log(
+    'SESSION INVESTIGATION TOTAL TIME:',
+    totalTime,
+    'ms',
+  );
+
+  return {
+    success: true,
+    processing_time_ms:
+    totalTime,
+
+    duration: {
+      from,
+      to,
+    },
+
+    parsed: {
+      type:
+        'SESSION_ANALYSIS',
+
+      token:
+        params.token,
+    },
+
+    casinos:
+      casinoData,
+  };
+  }
+    // =====================================================
+    // BUILD CASINO RESULT
+  // =====================================================
+  // ✅ FINAL BUILD CASINO RESULT
+  // =====================================================
+  private buildCasinoResult(
+    casino: any,
+    symbol: string,
+    tableConfig: any,
+    tableFamily: any[],
+    lcTables: any[],
+    platformGames: any,
+    lcBlockedCountryMap: Map<string, any[]>,
+    launchedGameIds: Set<string>,
+    launchFailureMap: Map<string, boolean>,
+  )
+  {
+    const casinoId =
+      casino.casino_id;
+
+    const games =
+      platformGames?.data?.games || [];
+
+    const baseFamily =
+      symbol.match(/^\d+/)?.[0] ||
+      symbol;
+      
+  const lcGameIds =
+    lcTables.map(
+      (x: any) =>
+        `${x.operator_game_id}`,
+    );
+
+  console.log(
+    'CASINO ID =>',
+    casinoId,
+  );
+
+  console.log(
+    'BASE FAMILY =>',
+    baseFamily,
+  );
+
+  return {
+    casino_id: casinoId,
+
+    casino_desc:
+      casino.casino_desc ||
+      casino.email_address,
+
+    env_name:
+      platformGames?.env ||
+      casino?.env ||
+      '',
+
+    ucid:
+      platformGames?.UCID ||
+      casino?.ucid ||
+      '',
+
+      casino_active_flag:
+        casino.active_flag,
+  table_info: [
+  {
+    is_base_table: true,
+
+    is_launched:
+      launchedGameIds.has(
+        String(baseFamily),
+      ),
+
+  has_launch_failed: (() => {
+    const key =
+      `${casinoId}_${baseFamily}`;
+
+    const value =
+      launchFailureMap.get(key) ||
+      false;
+
+    console.log(
+      'HAS_LAUNCH_FAILED_CHECK',
+      {
+        key,
+        value,
+        availableKeys: Array.from(
+          launchFailureMap.keys(),
+        ),
+      },
+    );
+
+    return value;
+  })(),
+
+    base_table_id: baseFamily,
+
+    operator_game_id: baseFamily,
+    table_name: this.getGameDisplayName(
+      baseFamily,
+      tableConfig?.table_name ||
+        tableFamily?.[0]?.table_name,
+    ) || null,
+
+      platform_enabled:
+        games.some(
+          (x: any) =>
+            `${x.gameID}` ===
+            `${baseFamily}`,
+        ),
+
+      lc_enabled:
+        lcGameIds.includes(
+          `${baseFamily}`,
+        ),
+  lc_blocked_countries:
+      lcBlockedCountryMap.get(
+        baseFamily,
+      ) || [],
+
+      table_config:
+        [],
+    },
+
+    ...tableFamily
+      .filter(
+        (table: any) =>
+          table.operator_game_id !==
+          baseFamily,
+      )
+  .map(
+    (table: any) => ({
+      is_base_table: false,
+
+      is_launched:
+        launchedGameIds.has(
+          String(table.operator_game_id),
+        ),
+
+      has_launch_failed:
+        launchFailureMap.get(
+          `${casinoId}_${table.operator_game_id}`,
+        ) || false,
+
+    base_table_id: baseFamily,
+
+    operator_game_id:
+      table.operator_game_id,
+
+    table_name: this.getGameDisplayName(
+      String(table.operator_game_id),
+      table.table_name,
+    ),
+
+          platform_enabled:
+            games.some(
+              (x: any) =>
+                `${x.gameID}` ===
+                `${table.operator_game_id}`,
+            ),
+
+          lc_enabled:
+            lcGameIds.includes(
+              `${table.operator_game_id}`,
+            ),
+            lc_blocked_countries: [],
+
+          table_config:
+            [],
+        }),
+      ),
+  ],
+    };
+  }
+
+  //Push table config evnet//
+  private pushTableConfigEvent(
+    tableConfigEventMap: Map<string, any[]>,
+    operatorGameId: string,
+    event: any,
+  ) {
+    if (!operatorGameId) {
+      return;
+    }
+
+    const key = `${operatorGameId}`;
+
+    if (!tableConfigEventMap.has(key)) {
+      tableConfigEventMap.set(key, []);
+    }
+
+    const existingEvents =
+      tableConfigEventMap.get(key) || [];
+
+    const uniqueKey =
+      `${operatorGameId}_${event.player_ip || ''}_${event.player_country || ''}_${event.player_region || ''}_${event.session_id || ''}_${event.block_level || ''}`;
+
+    const alreadyExists =
+      existingEvents.some(
+        (x: any) =>
+          `${operatorGameId}_${x.player_ip || ''}_${x.player_country || ''}_${x.player_region || ''}_${x.session_id || ''}_${x.block_level || ''}` ===
+          uniqueKey,
+      );
+
+    if (!alreadyExists) {
+      existingEvents.push(event);
+    }
+
+    tableConfigEventMap.set(
+      key,
+      existingEvents,
+    );
+  }
+
+  private attachTableConfigEvents(
+    tableInfo: any[],
+    tableConfigEventMap: Map<string, any[]>,
+  ) {
+    return tableInfo.map((table: any) => {
+      const operatorGameId =
+        `${table.operator_game_id}`;
+
+      const tableConfigEvents =
+        tableConfigEventMap.get(operatorGameId) ||
+        [];
+
+      return {
+        ...table,
+
+        table_config:
+          tableConfigEvents.sort(
+            (a: any, b: any) =>
+              new Date(a.timestamp || 0).getTime() -
+              new Date(b.timestamp || 0).getTime(),
+          ),
+      };
+    });
+  }
+    // =====================================================
+    // FILTER GAME LAUNCH LOGS
+    // =====================================================
+
+    private filterGameLaunchLogs(
+      logs: any[],
+      token: string,
+    ) {
+      return this.dedupeByTimestampAndMessage(
+        logs.filter((log: any) => {
+          const combined =
+            JSON.stringify(log);
+
+          return combined.includes(
+            token,
+          );
+        }),
+      );
+    }
+
+    // =====================================================
+    // URL PARSER
+    // =====================================================
+
+    private parseUrl(
+      url: string,
+    ): ParsedGameLaunchUrl {
+      if (
+        url.includes(
+          'playGame.do',
+        )
+      ) {
+        return this.parsePlayGameUrl(
+          url,
+        );
+      }
+
+      if (
+        url.includes(
+          'openGame.do',
+        )
+      ) {
+        return this.parseOpenGameUrl(
+          url,
+        );
+      }
+
+      return this.parseGameLaunch(
+        url,
+      );
+    }
+
+    private parsePlayGameUrl(
+      url: string,
+    ): ParsedGameLaunchUrl {
+      const parsed =
+        new URL(url);
+  const rawKey = decodeURIComponent(
+    parsed.searchParams.get('key') || '',
+  );
+
+  // ✅ EXTRA CLEAN (THIS FIXES YOUR CURRENT BUG)
+  const cleanedKey = rawKey.replace(/&amp;/g, '&');
+
+  const keyMap: any = {};
+
+  // ✅ FORMAT 1: `|`
+  if (cleanedKey.includes('`|`')) {
+    cleanedKey.split('`|`').forEach((x) => {
+      const [k, v] = x.split('=');
+      keyMap[k] = v;
+    });
+  }
+
+  // ✅ FORMAT 2: &
+  else if (cleanedKey.includes('&')) {
+    const params = new URLSearchParams(cleanedKey);
+
+    params.forEach((value, key) => {
+      keyMap[key] = value;
+    });
+  }
+
+  // ✅ ✅ CRITICAL: SAFE TOKEN EXTRACTION (no corruption possible)
+  // ✅ ✅ UNIVERSAL SAFE TOKEN EXTRACTION (handles all Pragmatic formats)
+  let safeToken = '';
+
+  // ✅ FORMAT 1: `|`
+  if (cleanedKey.includes('`|`')) {
+    cleanedKey.split('`|`').forEach((x) => {
+      const [k, v] = x.split('=');
+      if (k === 'token') {
+        safeToken = v;
+      }
+    });
+  }
+
+  // ✅ FORMAT 2: & (URL-style)
+  else if (cleanedKey.includes('&')) {
+    const params = new URLSearchParams(cleanedKey);
+    safeToken = params.get('token') || '';
+  }
+
+  // ✅ FALLBACK (extra safety)
+  if (!safeToken) {
+    const match = cleanedKey.match(/token=([^`|&]+)/);
+    safeToken = match ? match[1] : '';
+  }
+
+  // ✅ FINAL CLEAN
+  safeToken = safeToken.trim();
+
+  return {
+    type: 'PLAY_GAME',
+
+    stylename: parsed.searchParams.get('stylename') || '',
+
+    user_id: (parsed.searchParams.get('userId') || '')
+      .replace(/"/g, '')
+      .trim(),
+
+    ppkv: parsed.searchParams.get('ppkv') || '',
+    country: parsed.searchParams.get('country') || '',
+
+    token: safeToken, // ✅ CORRECTED TOKEN
+
+    symbol:
+      keyMap.symbol ||
+      parsed.searchParams.get('symbol') ||
+      '',
+  };
+    }
+  private parseOpenGameUrl(
+    url: string,
+  ): ParsedGameLaunchUrl {
+    const parsed = new URL(url);
+
+    return {
+      type: 'OPEN_GAME',
+
+      stylename:
+        parsed.searchParams.get('stylename') || '',
+
+      symbol:
+        parsed.searchParams.get('symbol') || '',
+
+      tc:
+        parsed.searchParams.get('tc') || '',
+
+      country:
+        parsed.searchParams.get('country') || '',
+    };
+  }
+
+    private parseGameLaunch(
+      url: string,
+    ): ParsedGameLaunchUrl {
+      const parsed =
+        new URL(url);
+
+      return {
+        type:
+          'GAME_LAUNCH',
+
+        secureLogin:
+          parsed.searchParams.get(
+            'secureLogin',
+          ) || '',
+
+        stylename:
+          parsed.searchParams.get(
+            'stylename',
+          ) || '',
+
+        gameid:
+          parsed.searchParams.get(
+            'gameid',
+          ) || '',
+
+        environmentID:
+          parsed.searchParams.get(
+            'environmentID',
+          ) || '',
+
+        ppToken:
+          parsed.searchParams.get(
+            'ppToken',
+          ) || '',
+
+        ppCasinoId:
+          parsed.searchParams.get(
+            'ppCasinoId',
+          ) || '',
+
+        symbol:
+          parsed.searchParams.get(
+            'gameid',
+          ) || '',
+
+          country:
+    parsed.searchParams.get(
+      'requestCountryCode',
+    ) || '',
+      };
+    }
+
+    // =====================================================
+    // DEDUPE
+    // =====================================================
+
+    private dedupeByTimestampAndMessage<
+      T extends {
+        timestamp?: string;
+        message?: string;
+      },
+    >(items: T[]): T[] {
+      const seen =
+        new Set<string>();
+
+      const result: T[] = [];
+
+      for (const item of items) {
+        const key =
+          `${item?.timestamp || ''}__${
+            item?.message || ''
+          }`;
+
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+
+        result.push(item);
+      }
+
+      return result;
+    }
+
+    // =====================================================
+    // LOG MAPPER
+    // =====================================================
+  private casinoMatches(
+    casinoId: string,
+    platformCasinoId: any,
+  ): boolean {
+    if (!casinoId || !platformCasinoId) {
+      return false;
+    }
+
+    const numericCasinoId =
+      casinoId.replace(/\D/g, '');
+
+    const platformId =
+      String(platformCasinoId)
+        .replace(/,/g, '');
+
+    return numericCasinoId.endsWith(
+      platformId,
+    );
+  }
+
+  // =====================================================
+  // PLATFORM LOG LEVEL
+  // =====================================================
+  private getPlatformLogLevel(
+    log: any,
+  ): string {
+    const responseText =
+      log?.app?.responseLog?.log;
+
+    if (responseText) {
+      try {
+        const parsed =
+          JSON.parse(responseText);
+
+        const error =
+          parsed?.error;
+
+        return (
+          error === 0 ||
+          error === '0' ||
+          error === null
+        )
+          ? 'SUCCESS'
+          : 'ERROR';
+      } catch {
+        return 'ERROR';
+      }
+    }
+
+    const httpErrorCode =
+      Number(
+        log?.app?.httpErrorCode,
+      );
+
+    return httpErrorCode === 200
+      ? 'SUCCESS'
+      : 'ERROR';
+  }
+  // =====================================================
+  // LC LOG LEVEL
+  // =====================================================
+  private getLcLogLevel(
+    log: any,
+  ): string {
+    const text =
+      log?.message || '';
+
+    if (text.includes('"error":0')) {
+      return 'SUCCESS';
+    }
+
+    if (
+      text.match(
+        /"error"\s*:\s*\d+/,
+      )
+    ) {
+      return 'ERROR';
+    }
+
+    return 'INFO';
+  }
+
+
+    private mapLogs(logs: any[]) {
+      return logs.map(
+        (log: any) => ({
+          _id:
+            log?._id || '',
+
+          _index:
+            log?._index || '',
+        log_level:
+    log?._index?.startsWith(
+      'filebeat-slots',
+    )
+      ? this.getPlatformLogLevel(
+          log,
+        )
+      : this.getLcLogLevel(
+          log,
+        ),
+
+          timestamp:
+            log?.[
+              '@timestamp'
+            ] || '',
+
+          app:
+            log?.app || '',
+
+          service:
+            log?.service ||
+            '',
+
+          serviceName:
+            log?.serviceName ||
+            '',
+
+          serviceMethod:
+            log?.serviceMethod ||
+            '',
+
+          stage:
+            log?.stage || '',
+
+          error:
+            log?.error || '',
+
+          responseLog:
+            log?.responseLog ||
+            '',
+
+          requestLog:
+            log?.requestLog ||
+            '',
+
+          host:
+            log?.host || '',
+
+          message:
+            log?.message ||
+            '',
+
+          contextMap:
+            log?.contextMap ||
+            {},
+        }),
+      );
+    }
+  }
