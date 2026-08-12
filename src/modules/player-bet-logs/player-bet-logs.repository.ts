@@ -42,6 +42,20 @@ export class PlayerBetLogsRepository {
     return [format(previous), format(current)];
   }
 
+private getCasinoIndexesByEnv(
+  date: string,
+): string | string[] {
+  if (
+    process.env.NODE_ENV === 'prelive'
+  ) {
+    return 'filebeat-*';
+  }
+
+  return this.getCasinoIndexes(
+    date,
+  );
+}
+
   private getRoundIndexes3Days(from: string, to: string, prefix: string): string[] {
     const fromDate = new Date(from);
     const toDate = new Date(to);
@@ -167,7 +181,10 @@ private async runGameQueries(params: any) {
   const gameId = this.clean(params.gameId);
   const userId = this.clean(params.userId);
 
-  const casinoIndexes = this.getCasinoIndexes(params.from);
+const casinoIndexes =
+  this.getCasinoIndexesByEnv(
+    params.from,
+  );
 
   const results = await Promise.all([
     // ✅ Query 1
@@ -362,7 +379,10 @@ private async runGameQueries(params: any) {
     const gameId = this.clean(params.gameId);
     const userId = this.clean(params.userId);
 
-    const casinoIndexes = this.getCasinoIndexes(params.from);
+const casinoIndexes =
+  this.getCasinoIndexesByEnv(
+    params.from,
+  );
 
     return this.searchFilebeatLogs({
       query: `"ERROR : 1007 - LATE BET" AND "${gameId}" AND "${userId}"`,
@@ -378,16 +398,30 @@ private async runGameQueries(params: any) {
 
     const roundId = this.clean(params.roundId);
 
-    const gameApiIndexes = [
-      ...this.getRoundIndexes3Days(params.from, params.to, 'filebeat-casino'),
-      ...this.getRoundIndexes3Days(params.from, params.to, 'filebeat-live'),
-    ];
+    const gameApiIndexes =
+  process.env.NODE_ENV === 'prelive'
+    ? ['filebeat-*']
+    : [
+        ...this.getRoundIndexes3Days(
+          params.from,
+          params.to,
+          'filebeat-casino',
+        ),
+        ...this.getRoundIndexes3Days(
+          params.from,
+          params.to,
+          'filebeat-live',
+        ),
+      ];
 
-    const slotsIndexes = this.getRoundIndexes3Days(
-      params.from,
-      params.to,
-      'filebeat-slots'
-    );
+   const slotsIndexes =
+  process.env.NODE_ENV === 'prelive'
+    ? ['filebeat-slots-*']
+    : this.getRoundIndexes3Days(
+        params.from,
+        params.to,
+        'filebeat-slots',
+      );
 
     const fromDate = new Date(params.from);
     const now = new Date();

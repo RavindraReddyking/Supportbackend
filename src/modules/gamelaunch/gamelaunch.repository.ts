@@ -69,6 +69,30 @@ export class GameLaunchRepository {
 
   return indexes;
 }
+
+//Index for prleive//
+private getFilebeatIndex(
+  from: string,
+  to: string,
+): string | string[] {
+  const isPrelive =
+    process.env.NODE_ENV === 'prelive';
+
+    console.log(
+  'NODE_ENV:',
+  process.env.NODE_ENV,
+);
+
+  if (isPrelive) {
+    return 'filebeat-*';
+  }
+
+  return this.getIndexes3Days(
+    from,
+    to,
+  );
+}
+
   // =====================================================
   // SEARCH FILEBEAT LOGS (✅ UPDATED WITH DSL SUPPORT)
   // =====================================================
@@ -535,11 +559,10 @@ console.log(
 
   
 const indexes =
-  this.getIndexes3Days(
+  this.getFilebeatIndex(
     params.from,
     params.to,
   );
-
 
   return this.searchFilebeatLogs({
     query: finalQuery,
@@ -564,7 +587,7 @@ const indexes =
 
     
 const indexes =
-  this.getIndexes3Days(
+  this.getFilebeatIndex(
     params.from,
     params.to,
   );
@@ -676,6 +699,11 @@ const maxAttempts = 3;
 
 let res: any;
 
+const index =
+  process.env.NODE_ENV === 'prelive'
+    ? 'filebeat-*'
+    : 'filebeat-live-*';
+
 for (
   let attempt = 1;
   attempt <= maxAttempts;
@@ -689,13 +717,13 @@ for (
 
   try {
     res = await axios.post(
-      `${process.env.ES_HOST}/filebeat-live-*/_search`,
-      body,
-      {
-        headers: this.headers(),
-        timeout,
-      },
-    );
+  `${process.env.ES_HOST}/${index}/_search`,
+  body,
+  {
+    headers: this.headers(),
+    timeout,
+  },
+);
 
     break;
   } catch (error: any) {
@@ -742,11 +770,10 @@ console.log(
 );
   
 const indexes =
-  this.getIndexes3Days(
+  this.getFilebeatIndex(
     params.from,
     params.to,
   );
-
 
   return this.searchFilebeatLogs({
     query: finalQuery,
