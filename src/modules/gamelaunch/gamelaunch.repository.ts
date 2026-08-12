@@ -93,6 +93,22 @@ private getFilebeatIndex(
   );
 }
 
+//temporay fix//
+private getDbEnv(): string {
+  const env =
+    process.env.NODE_ENV?.toLowerCase() === 'prelive'
+      ? 'prelive0.dbo'
+      : 'live.dbo';
+
+  console.log(
+    'DB ENV RESOLVED:',
+    process.env.NODE_ENV,
+    '=>',
+    env,
+  );
+
+  return env;
+}
   // =====================================================
   // SEARCH FILEBEAT LOGS (✅ UPDATED WITH DSL SUPPORT)
   // =====================================================
@@ -282,8 +298,7 @@ for (
   // =====================================================
 
   async getCasinoDetails(casinoId: string) {
-    const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
     return this.database.query(
       (request) =>
         request.input(
@@ -317,8 +332,7 @@ WHERE owc.casino_id = @CasinoId
   // =====================================================
 
   async getTableConfig(operatorGameId: string) {
-    const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
     return this.database.query(
       (request) =>
         request.input(
@@ -341,8 +355,7 @@ WHERE operator_game_id = @OperatorGameId
 async getDistinctTableConfig(
   operatorGameIds: string[],
 ) {
-  const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
   const gameIds = operatorGameIds
     .map((x) => `'${x}'`)
     .join(',');
@@ -363,8 +376,7 @@ ORDER BY operator_game_id
 
 //To get All Chroma//
 async getTableFamily(operatorGameId: string) {
-  const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
   return this.database.query(
     (request) =>
       request.input(
@@ -410,8 +422,7 @@ ORDER BY operator_game_id
 async getTableFamilies(
   operatorGameIds: string[],
 ) {
-  const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
   const whereClause = operatorGameIds
     .map(
       (_, index) =>
@@ -454,8 +465,7 @@ async getTableConfigs(
   casinoId: string,
   operatorGameIds: string[],
 ) {
-  const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
   const ids = operatorGameIds
     .map((_, index) => `@id${index}`)
     .join(',');
@@ -497,8 +507,7 @@ ORDER BY operator_game_id
   // =====================================================
 
   async findCasinoUsers(styleName: string) {
-    const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
     return this.database.query(
       (request) =>
         request.input(
@@ -605,8 +614,7 @@ const indexes =
 async getLcBlockedCountries(
   operatorGameIds: string[],
 ) {
-  const dbenv = process.env.DBENV;
-
+const dbenv = this.getDbEnv();
   const ids = operatorGameIds
     .map((_, index) => `@id${index}`)
     .join(',');
