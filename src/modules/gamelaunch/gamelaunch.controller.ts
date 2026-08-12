@@ -73,88 +73,42 @@ export class GameLaunchController {
   // ============================================
   // 2. Investigation
   // ============================================
-
   @Post('investigate')
-  async investigate(
-    @Body()
-    body: {
-      url?: string;
-      token?: string;
-      startDate?: string;
-      endDate?: string;
-    },
-
-    @Req() request?: Request,
-  ) {
-    if (
-      (!body?.url ||
-        !body.url.trim()) &&
-      (!body?.token ||
-        !body.token.trim())
-    ) {
-      return {
-        success: false,
-        message:
-          'url or token is required',
-      };
-    }
-
-    const response =
-      body.token
-        ? await this.service
-            .investigateSession({
-              token: body.token,
-
-              startDate:
-                body.startDate,
-
-              endDate:
-                body.endDate,
-
-              cookies:
-                request?.headers
-                  ?.cookie || '',
-            })
-        : await this.service
-            .investigate({
-              url: body.url!,
-
-              startDate:
-                body.startDate,
-
-              endDate:
-                body.endDate,
-
-              cookies:
-                request?.headers
-                  ?.cookie || '',
-            });
-
-    this.auditLogService.capture(
-      request,
-      {
-        action:
-          body.token
-            ? 'SESSION_ANALYSIS'
-            : 'GAMELAUNCH_INVESTIGATE',
-
-        entityType:
-          body.token
-            ? 'session-analysis'
-            : 'gamelaunch-investigation',
-
-        entityValue:
-          body.token ||
-          body.url ||
-          '',
-
-        status:
-          response?.success
-            ? 'SUCCESS'
-            : 'FAILED',
-      },
-    );
+async investigate(
+  @Body() body: any,
+  @Req() request: Request,
+) {
+  try {
+    const response = body.token
+      ? await this.service.investigateSession({
+          token: body.token,
+          startDate: body.startDate,
+          endDate: body.endDate,
+          cookies: request?.headers?.cookie || '',
+        })
+      : await this.service.investigate({
+          url: body.url,
+          startDate: body.startDate,
+          endDate: body.endDate,
+          cookies: request?.headers?.cookie || '',
+        });
 
     return response;
+  } catch (error: any) {
+    console.error('=========================');
+    console.error('GAME LAUNCH ERROR');
+    console.error(error);
+    console.error(error?.stack);
+    console.error('STATUS:', error?.response?.status);
+    console.error('RESPONSE:', error?.response?.data);
+    console.error('=========================');
+
+    return {
+      success: false,
+      error: error?.message,
+      response: error?.response?.data,
+      status: error?.response?.status,
+    };
   }
+}
 }
