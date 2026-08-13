@@ -44,8 +44,30 @@
       private readonly repository: GameLaunchRepository,
     ) {}
 
-    private readonly rgsSecret =
-      process.env.RGS_SECRET || '';
+    /*private readonly rgsSecret =
+      process.env.RGS_SECRET || ''; */
+
+      private getRgsSecret(): string {
+  const nodeEnv =
+    process.env.NODE_ENV?.toLowerCase();
+
+  const secret =
+    nodeEnv === 'prelive'
+      ? 'testKey'
+      : 'ESWLTOxIH8qAZt';
+
+  console.log(
+    'NODE_ENV:',
+    nodeEnv,
+  );
+
+  console.log(
+    'RGS SECRET USED:',
+    secret,
+  );
+
+  return secret;
+}
 
     private readonly internalApiUrl =
       process.env.INTERNAL_API_URL ||
@@ -204,7 +226,7 @@
       return 'http://api.prerelease-env.biz';
     }
 
-    const legacyEnvs = ['sga15', 'in4'];
+    const legacyEnvs = ['sga15', 'in4','tw'];
 
     if (
       legacyEnvs.includes(
@@ -667,10 +689,10 @@
         `GET-${timestamp}-${pathForHmac}`;
 
       const hmacMd5 = crypto
-        .createHmac(
-          'md5',
-          this.rgsSecret,
-        )
+       .createHmac(
+  'md5',
+  this.getRgsSecret(),
+)
         .update(strForHmac)
         .digest('hex');
 
@@ -810,10 +832,10 @@
       `POST-${timestamp}-${pathForHmac}`;
 
     const hmacMd5 = crypto
-      .createHmac(
-        'md5',
-        this.rgsSecret,
-      )
+    .createHmac(
+  'md5',
+  this.getRgsSecret(),
+)
       .update(strForHmac)
       .digest('hex');
 
@@ -3016,6 +3038,15 @@
         casinos[0].casino_id,
       );
 
+      console.log(
+  'PLATFORM CONFIG RAW RESPONSE:',
+  JSON.stringify(
+    platformConfig,
+    null,
+    2,
+  ),
+);
+
   console.log(
     'PLATFORM CONFIG SUCCESS:',
     platformConfig?.success,
@@ -3031,10 +3062,22 @@
     !!platformConfig?.data?.casinoConfigurations,
   );
 
+  console.log(
+  'CASINO CONFIGURATIONS COUNT:',
+  platformConfig?.data
+    ?.casinoConfigurations
+    ?.length,
+);
+
     const targetCasinoId =
       this.extractCasinoId(
         casinos[0].casino_id,
       );
+
+      console.log(
+  'TARGET CASINO ID:',
+  targetCasinoId,
+);
 
   matchedCasinoConfig =
     platformConfig?.data?.casinoConfigurations?.find(
@@ -3047,6 +3090,51 @@
     'MATCHED CASINO CONFIG FOUND:',
     !!matchedCasinoConfig,
   );
+
+  console.log(
+  'MATCHED CASINO CONFIG FULL:',
+  JSON.stringify(
+    matchedCasinoConfig,
+    null,
+    2,
+  ),
+);
+
+console.log(
+  'HAS CONFIGURATION:',
+  !!matchedCasinoConfig?.configuration,
+);
+
+
+console.log(
+  'JURISDICTION SETTINGS RAW:',
+  JSON.stringify(
+    matchedCasinoConfig?.configuration
+      ?.jurisdictionSettings,
+    null,
+    2,
+  ),
+);
+
+console.log(
+  'COUNTRY SETTINGS RAW:',
+  JSON.stringify(
+    matchedCasinoConfig?.configuration
+      ?.countrySettings,
+    null,
+    2,
+  ),
+);
+
+console.log(
+  'REGION SETTINGS RAW:',
+  JSON.stringify(
+    matchedCasinoConfig?.configuration
+      ?.regionSettings,
+    null,
+    2,
+  ),
+);
 
   console.log(
     'TARGET CASINO ID:',
