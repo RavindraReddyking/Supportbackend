@@ -24,78 +24,74 @@ export class PlayerBetLogsRepository {
     return value?.trim();
   }
 
-  /**
-   * Search both:
-   * current day index
-   * previous day index
-   *
-   * because some logs are delayed
-   * and stored in previous day index
-   */
-  private getCasinoIndexes(
-    date: string,
-  ): string[] {
+  private getCasinoIndexes(date: string): string[] {
     const logDate = new Date(date);
 
     const current = new Date(logDate);
-
     const previous = new Date(logDate);
 
-    previous.setUTCDate(
-      previous.getUTCDate() - 1,
-    );
+    previous.setUTCDate(previous.getUTCDate() - 1);
 
     const format = (d: Date) => {
       const yyyy = d.getUTCFullYear();
-
-      const mm = String(
-        d.getUTCMonth() + 1,
-      ).padStart(2, '0');
-
-      const dd = String(
-        d.getUTCDate(),
-      ).padStart(2, '0');
-
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
       return `filebeat-casino-${yyyy}.${mm}.${dd}*`;
     };
 
-    return [
-      format(previous),
-      format(current),
-    ];
+    return [format(previous), format(current)];
+  }
+
+private getCasinoIndexesByEnv(
+  date: string,
+): string | string[] {
+  if (
+    process.env.NODE_ENV === 'prelive'
+  ) {
+    return 'filebeat-*';
+  }
+
+  return this.getCasinoIndexes(
+    date,
+  );
+}
+
+  private getRoundIndexes3Days(from: string, to: string, prefix: string): string[] {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+
+    const prevDate = new Date(fromDate);
+    prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+
+    const format = (d: Date) => {
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      return `${prefix}-${yyyy}.${mm}.${dd}*`;
+    };
+
+    return Array.from(new Set([
+      format(prevDate),
+      format(fromDate),
+      format(toDate),
+    ]));
   }
 
   private async searchFilebeatLogs(params: {
-    query: string;
+    query?: string;
     from: string;
     to: string;
     size?: number;
     index?: string | string[];
+    bodyOverride?: any;
   }) {
-    const index = Array.isArray(
-      params.index,
-    )
+    const index = Array.isArray(params.index)
       ? params.index.join(',')
-      : params.index ||
-        this.INDEX.ALL;
+      : params.index || this.INDEX.ALL;
 
-    const traceId = Math.random()
-      .toString(36)
-      .substring(2, 8);
-
-    const start = Date.now();
-
-    const body = {
+    const body = params.bodyOverride ?? {
       size: params.size ?? 2000,
-
-      sort: [
-        {
-          '@timestamp': {
-            order: 'asc',
-          },
-        },
-      ],
-
+      sort: [{ '@timestamp': { order: 'asc' } }],
       _source: [
         '@timestamp',
         'message',
@@ -111,20 +107,19 @@ export class PlayerBetLogsRepository {
         'host',
         'app_proc_time',
         'contextMap',
+        'level',
+        'thrown.extendedStackTrace',
       ],
-
       query: {
         bool: {
           must: [
             {
               query_string: {
                 query: params.query,
-                default_operator:
-                  'AND',
+                default_operator: 'AND',
               },
             },
           ],
-
           filter: [
             {
               range: {
@@ -139,243 +134,255 @@ export class PlayerBetLogsRepository {
       },
     };
 
-    this.logger.log(
-      `[${traceId}] ES START | idx=${index} | size=${body.size} | qlen=${params.query.length}`,
-    );
+    const maxAttempts = 4;
 
-    try {
-      const res = await axios.post(
-        `${process.env.ES_HOST}/${index}/_search`,
-        body,
-        {
-          headers: this.headers(),
-          timeout: 120000,
-        },
-      );
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let timeout = 7000;
+      if (attempt === 4) timeout = 20000;
 
-      const time =
-        Date.now() - start;
+      try {
+        const res = await axios.post(
+          `${process.env.ES_HOST}/${index}/_search`,
+          body,
+          {
+            headers: this.headers(),
+            timeout,
+          },
+        );
 
-      const hits =
-        res.data?.hits?.hits || [];
+        const hits = res.data?.hits?.hits || [];
 
-      this.logger.log(
-        `[${traceId}] ES OK | time=${time}ms | hits=${hits.length} | es=${res.data?.took}ms`,
-      );
+        return hits.map((x: any) => ({
+          _id: x._id,
+          _index: x._index,
+          ...x._source,
+        }));
+      } catch (error: any) {
+        if (attempt === maxAttempts) {
+          return [];
+        }
 
-      return hits.map((x: any) => ({
-        _id: x._id,
-        _index: x._index,
-        ...x._source,
-      }));
-    } catch (error: any) {
-      const time =
-        Date.now() - start;
-
-      this.logger.error(
-        `[${traceId}] ES FAIL | time=${time}ms | ${error.message}`,
-      );
-
-      throw error;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
     }
   }
 
-  private buildQueries(
-    gameId: string,
-    userId: string,
-  ) {
-    const query1 = `(
-      contextMap.userId:"${userId}" AND message:"${gameId}"
-    )`;
-
+  private buildQueries(gameId: string, userId: string) {
+    const query1 = `contextMap.userId:"${userId}" AND message:"${gameId}"`;
     const query2 = `"${userId}" AND "Start WS Listener"`;
+    const query3 = `( ( message:"${gameId}" AND ( message:"betsclosed" OR message:"betsopen" OR message:"startdealing" OR message:"gr" OR message:"crashGameResult" OR message:"card" OR message:"decisioninc" OR message:"decision" ) ) OR ( message:"${gameId}" AND message:"${userId}" ) )`;
+    const query4 = `level:"ERROR" AND contextMap.userId:"${userId}" AND contextMap.gameId:"${gameId}"`;
 
-    const query3 = `(
-      (
-        message:"${gameId}" AND (
-          message:"betsclosed"
-          OR message:"betsopen"
-          OR message:"startdealing"
-          OR message:"gr"
-          OR message:"crashGameResult"
-          OR message:"card"
-          OR message:"decisioninc"
-          OR message:"decision"
-        )
-      )
-      OR
-      (
-        message:"${gameId}" AND message:"${userId}"
-      )
-    )
-    AND NOT message:"JavaFX Application Thread"
-    AND NOT message:"Hash calculation"`;
+    return [query1, query2, query3, query4];
+  }
+private async runGameQueries(params: any) {
+  const startTime = Date.now();
 
-    return [query1, query2, query3];
+  const gameId = this.clean(params.gameId);
+  const userId = this.clean(params.userId);
+
+const casinoIndexes =
+  this.getCasinoIndexesByEnv(
+    params.from,
+  );
+
+  const results = await Promise.all([
+    // ✅ Query 1
+    this.searchFilebeatLogs({
+      from: params.from,
+      to: params.to,
+      index: casinoIndexes,
+      bodyOverride: {
+        size: 2000,
+        sort: [{ '@timestamp': { order: 'asc' } }],
+        query: {
+          bool: {
+            filter: [
+              { match_phrase: { "contextMap.userId": userId } },
+              { match_phrase: { "message": gameId } },
+              {
+                range: {
+                  "@timestamp": {
+                    gte: params.from,
+                    lte: params.to,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+
+    // ✅ Query 2
+    this.searchFilebeatLogs({
+      from: params.from,
+      to: params.to,
+      index: casinoIndexes,
+      bodyOverride: {
+        size: 2000,
+        sort: [{ '@timestamp': { order: 'asc' } }],
+        query: {
+          bool: {
+            filter: [
+              { match_phrase: { "message": userId } },
+              { match_phrase: { "message": "Start WS Listener" } },
+              {
+                range: {
+                  "@timestamp": {
+                    gte: params.from,
+                    lte: params.to,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+
+    // ✅ Query 3 (complex)
+   this.searchFilebeatLogs({
+  from: params.from,
+  to: params.to,
+  index: casinoIndexes,
+  bodyOverride: {
+    size: 3000,
+    sort: [{ '@timestamp': { order: 'asc' } }],
+    query: {
+      bool: {
+        filter: [
+          { match_phrase: { "message": gameId } },
+          {
+            bool: {
+              should: [
+                { match_phrase: { "message": "betsclosed" } },
+                { match_phrase: { "message": "betsopen" } },
+                { match_phrase: { "message": "startdealing" } },
+                { match_phrase: { "message": "gr" } },
+                { match_phrase: { "message": "crashGameResult" } },
+                { match_phrase: { "message": "card" } },
+                { match_phrase: { "message": "decisioninc" } },
+                { match_phrase: { "message": "decision" } },
+              ],
+              minimum_should_match: 1
+            },
+          },
+          {
+            range: {
+              "@timestamp": {
+                gte: params.from,
+                lte: params.to,
+              },
+            },
+          },
+        ],
+      },
+    },
+  },
+}),
+    // ✅ Query 4 (ERROR logs)
+    this.searchFilebeatLogs({
+      from: params.from,
+      to: params.to,
+      index: casinoIndexes,
+      bodyOverride: {
+        size: 1000,
+        sort: [{ '@timestamp': { order: 'asc' } }],
+        query: {
+          bool: {
+            filter: [
+              { match_phrase: { "level": "ERROR" } },
+              { match_phrase: { "contextMap.userId": userId } },
+              { match_phrase: { "contextMap.gameId": gameId } },
+              {
+                range: {
+                  "@timestamp": {
+                    gte: params.from,
+                    lte: params.to,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+
+  //Query 5//
+
+  this.searchFilebeatLogs({
+  from: params.from,
+  to: params.to,
+  index: casinoIndexes,
+  bodyOverride: {
+    size: 2000,
+    sort: [{ '@timestamp': { order: 'asc' } }],
+    query: {
+      bool: {
+        filter: [
+          { match_phrase: { "message": gameId } },
+          { match_phrase: { "message": userId } },
+          {
+            range: {
+              "@timestamp": {
+                gte: params.from,
+                lte: params.to,
+              },
+            },
+          },
+        ],
+      },
+    },
+  },
+})
+  ]);
+
+  // ✅ Merge + dedupe
+  const combined = results.flat();
+
+  const uniqueMap = new Map();
+  combined.forEach(item => uniqueMap.set(item._id, item));
+
+  const result = Array.from(uniqueMap.values()).sort(
+    (a: any, b: any) =>
+      new Date(a['@timestamp']).getTime() -
+      new Date(b['@timestamp']).getTime(),
+  );
+
+  this.logger.log(`[GAME] TOTAL TIME = ${Date.now() - startTime} ms`);
+
+  return result;
+}
+
+  async searchGenericGameLogs(params: any) {
+    return this.runGameQueries(params);
   }
 
-  private async runGameQueries(
-    params: any,
-  ) {
-    const gameId = this.clean(
-      params.gameId,
-    );
-
-    const userId = this.clean(
-      params.userId,
-    );
-
-    const [q1, q2, q3] =
-      this.buildQueries(
-        gameId,
-        userId,
-      );
-
-    const casinoIndexes =
-      this.getCasinoIndexes(
-        params.from,
-      );
-
-    this.logger.log(
-      `[GAMELOGS] Using indexes=${casinoIndexes.join(
-        ',',
-      )} | gameId=${gameId} | userId=${userId}`,
-    );
-
-    const [res1, res2, res3] =
-      await Promise.all([
-        this.searchFilebeatLogs({
-          query: q1,
-          from: params.from,
-          to: params.to,
-          index: casinoIndexes,
-        }),
-
-        this.searchFilebeatLogs({
-          query: q2,
-          from: params.from,
-          to: params.to,
-          index: casinoIndexes,
-        }),
-
-        this.searchFilebeatLogs({
-          query: q3,
-          from: params.from,
-          to: params.to,
-          size: 3000,
-          index: casinoIndexes,
-        }),
-      ]);
-
-    // combine all
-    const combined = [
-      ...res1,
-      ...res2,
-      ...res3,
-    ];
-
-    // remove duplicates
-    const uniqueMap = new Map();
-
-    for (const item of combined) {
-      uniqueMap.set(item._id, item);
-    }
-
-    // sort by timestamp
-    return Array.from(
-      uniqueMap.values(),
-    ).sort(
-      (a: any, b: any) =>
-        new Date(
-          a['@timestamp'],
-        ).getTime() -
-        new Date(
-          b['@timestamp'],
-        ).getTime(),
-    );
+  async searchOtherGameLogs(params: any) {
+    return this.runGameQueries(params);
   }
 
-  async searchGenericGameLogs(
-    params: any,
-  ) {
-    this.logger.log(
-      `[GENERIC] ${params.gameId} | ${params.userId}`,
-    );
-
-    return this.runGameQueries(
-      params,
-    );
+  async searchBlackjackGameLogs(params: any) {
+    return this.runGameQueries(params);
   }
 
-  async searchOtherGameLogs(
-    params: any,
-  ) {
-    this.logger.log(
-      `[OTHER] ${params.gameId} | ${params.userId}`,
-    );
-
-    return this.runGameQueries(
-      params,
-    );
+  async searchBaccaratGameLogs(params: any) {
+    return this.runGameQueries(params);
   }
 
-  async searchBlackjackGameLogs(
-    params: any,
-  ) {
-    this.logger.log(
-      `[BLACKJACK] ${params.gameId} | ${params.userId}`,
-    );
-
-    return this.runGameQueries(
-      params,
-    );
+  async searchCrashGameLogs(params: any) {
+    return this.runGameQueries(params);
   }
 
-  async searchBaccaratGameLogs(
-    params: any,
-  ) {
-    this.logger.log(
-      `[BACCARAT] ${params.gameId} | ${params.userId}`,
-    );
+  async searchLateBetLogs(params: any) {
+    const gameId = this.clean(params.gameId);
+    const userId = this.clean(params.userId);
 
-    return this.runGameQueries(
-      params,
-    );
-  }
-
-  async searchCrashGameLogs(
-    params: any,
-  ) {
-    this.logger.log(
-      `[CRASH] ${params.gameId} | ${params.userId}`,
-    );
-
-    return this.runGameQueries(
-      params,
-    );
-  }
-
-  async searchLateBetLogs(
-    params: any,
-  ) {
-    const gameId = this.clean(
-      params.gameId,
-    );
-
-    const userId = this.clean(
-      params.userId,
-    );
-
-    const casinoIndexes =
-      this.getCasinoIndexes(
-        params.from,
-      );
-
-    this.logger.log(
-      `[LATEBET] ${gameId} | ${userId} | idx=${casinoIndexes.join(
-        ',',
-      )}`,
-    );
+const casinoIndexes =
+  this.getCasinoIndexesByEnv(
+    params.from,
+  );
 
     return this.searchFilebeatLogs({
       query: `"ERROR : 1007 - LATE BET" AND "${gameId}" AND "${userId}"`,
@@ -386,23 +393,114 @@ export class PlayerBetLogsRepository {
     });
   }
 
-  async searchRoundLogs(
-    params: any,
-  ) {
-    const roundId = this.clean(
-      params.roundId,
-    );
+  async searchRoundLogs(params: any) {
+    const startTime = Date.now();
 
-    this.logger.log(
-      `[ROUND] ${roundId}`,
-    );
+    const roundId = this.clean(params.roundId);
 
-    return this.searchFilebeatLogs({
-      query: `"${roundId}"`,
+    const gameApiIndexes =
+  process.env.NODE_ENV === 'prelive'
+    ? ['filebeat-*']
+    : [
+        ...this.getRoundIndexes3Days(
+          params.from,
+          params.to,
+          'filebeat-casino',
+        ),
+        ...this.getRoundIndexes3Days(
+          params.from,
+          params.to,
+          'filebeat-live',
+        ),
+      ];
+
+   const slotsIndexes =
+  process.env.NODE_ENV === 'prelive'
+    ? ['filebeat-slots-*']
+    : this.getRoundIndexes3Days(
+        params.from,
+        params.to,
+        'filebeat-slots',
+      );
+
+    const fromDate = new Date(params.from);
+    const now = new Date();
+    const diffDays =
+      (now.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    const gameApiPromise = this.searchFilebeatLogs({
       from: params.from,
       to: params.to,
-      size: 3000,
-      index: this.INDEX.ALL,
+      index: gameApiIndexes,
+      bodyOverride: {
+        size: 3000,
+        sort: [{ '@timestamp': { order: 'asc' } }],
+        query: {
+          bool: {
+            filter: [
+              { match_phrase: { message: 'gameapi' } },
+              { match_phrase: { message: 'Request' } },
+              { match_phrase: { message: roundId } },
+              {
+                range: {
+                  '@timestamp': {
+                    gte: params.from,
+                    lte: params.to,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
     });
+
+    let slotPromise: Promise<any[]> = Promise.resolve([]);
+
+    if (diffDays <= 9) {
+      slotPromise = this.searchFilebeatLogs({
+        from: params.from,
+        to: params.to,
+        index: slotsIndexes,
+        bodyOverride: {
+          size: 3000,
+          query: {
+            bool: {
+              filter: [
+                { match_phrase: { message: roundId } },
+                {
+                  range: {
+                    '@timestamp': {
+                      gte: params.from,
+                      lte: params.to,
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      });
+    }
+
+    const [gameApiLogs, slotLogs] = await Promise.all([
+      gameApiPromise,
+      slotPromise,
+    ]);
+
+    const combined = [...gameApiLogs, ...slotLogs];
+
+    const map = new Map();
+    combined.forEach((x) => map.set(x._id, x));
+
+    const result = Array.from(map.values()).sort(
+      (a, b) =>
+        new Date(a['@timestamp']).getTime() -
+        new Date(b['@timestamp']).getTime()
+    );
+
+    this.logger.log(`[ROUND] TOTAL TIME = ${Date.now() - startTime} ms`);
+
+    return result;
   }
 }

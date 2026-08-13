@@ -1,5 +1,4 @@
 import type { Request } from 'express';
-
 import {
   Body,
   Controller,
@@ -39,8 +38,7 @@ export class GameLaunchController {
     ) {
       return {
         success: false,
-        message:
-          'casinoid is required',
+        message: 'casinoid is required',
       };
     }
 
@@ -73,65 +71,44 @@ export class GameLaunchController {
   }
 
   // ============================================
-  // 2. GameLaunch Investigation
+  // 2. Investigation
   // ============================================
-
   @Post('investigate')
-  async investigate(
-    @Body()
-    body: {
-      url: string;
-      startDate?: string;
-      endDate?: string;
-    },
-
-    @Req() request?: Request,
-  ) {
-    if (
-      !body?.url ||
-      !body.url.trim()
-    ) {
-      return {
-        success: false,
-        message:
-          'url is required',
-      };
-    }
-
-    const response =
-      await this.service.investigate({
-        url: body.url,
-
-        startDate:
-          body.startDate,
-
-        endDate:
-          body.endDate,
-
-        cookies:
-          request?.headers
-            ?.cookie || '',
-      });
-
-    this.auditLogService.capture(
-      request,
-      {
-        action:
-          'GAMELAUNCH_INVESTIGATE',
-
-        entityType:
-          'gamelaunch-investigation',
-
-        entityValue:
-          body.url,
-
-        status:
-          response?.success
-            ? 'SUCCESS'
-            : 'FAILED',
-      },
-    );
+async investigate(
+  @Body() body: any,
+  @Req() request: Request,
+) {
+  try {
+    const response = body.token
+      ? await this.service.investigateSession({
+          token: body.token,
+          startDate: body.startDate,
+          endDate: body.endDate,
+          cookies: request?.headers?.cookie || '',
+        })
+      : await this.service.investigate({
+          url: body.url,
+          startDate: body.startDate,
+          endDate: body.endDate,
+          cookies: request?.headers?.cookie || '',
+        });
 
     return response;
+  } catch (error: any) {
+    console.error('=========================');
+    console.error('GAME LAUNCH ERROR');
+    console.error(error);
+    console.error(error?.stack);
+    console.error('STATUS:', error?.response?.status);
+    console.error('RESPONSE:', error?.response?.data);
+    console.error('=========================');
+
+    return {
+      success: false,
+      error: error?.message,
+      response: error?.response?.data,
+      status: error?.response?.status,
+    };
   }
+}
 }
