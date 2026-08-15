@@ -610,6 +610,42 @@ const indexes =
     });
   }
 
+  //Get casino using stylename//
+  async findCasinoByStyleNameAndEnv(
+  styleName: string,
+  ppenv: string,
+) {
+  const dbenv = this.getDbEnv();
+
+  return this.database.query(
+    (request) =>
+      request
+        .input(
+          'StyleName',
+          sql.VarChar(255),
+          styleName,
+        )
+        .input(
+          'Ppenv',
+          sql.VarChar(50),
+          ppenv,
+        ),
+
+    `
+SELECT
+    owc.casino_id,
+    e.name AS ppenv
+FROM ${dbenv}.casinouser c WITH (NOLOCK)
+INNER JOIN ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
+    ON c.casino_id = owc.casino_id
+INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
+    ON e.env_id = owc.env
+WHERE c.email_address = @StyleName
+  AND e.name = @Ppenv
+    `,
+  );
+}
+
 //Get LC Blocked countries//
 async getLcBlockedCountries(
   operatorGameIds: string[],
@@ -761,7 +797,6 @@ return (
 // =====================================================
 // ✅ FULL TOKEN LOG SEARCH (NO QUERY STRING FILTER)
 // =====================================================
-
 async searchAllLogsByToken(params: {
   token: string;
   from: string;
@@ -772,24 +807,24 @@ async searchAllLogsByToken(params: {
   );
 
   const finalQuery = `"${params.token}"`;
-console.log(
-  'TOKEN QUERY:',
-  finalQuery,
-);
-  
-const indexes =
-  this.getFilebeatIndex(
-    params.from,
-    params.to,
+
+  console.log(
+    'TOKEN QUERY:',
+    finalQuery,
   );
+
+  const indexes =
+    this.getFilebeatIndex(
+      params.from,
+      params.to,
+    );
 
   return this.searchFilebeatLogs({
     query: finalQuery,
     from: params.from,
     to: params.to,
-    size: 5000, // ✅ more logs
+    size: 5000,
     index: indexes,
   });
 }
-
 }
