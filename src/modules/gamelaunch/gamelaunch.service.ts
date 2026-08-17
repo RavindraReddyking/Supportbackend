@@ -1678,19 +1678,53 @@ let casinoId =
     dbCasinoMap,
   );
 
-    if (!gameId || !casinoId) {
-      console.log(
-        'LAUNCH FAILURE SKIPPED',
-        {
-          uuid,
-          gameId,
-          casinoId,
-        },
-      );
+  if (
+  !casinoId &&
+  isLobbyGame &&
+  isPlatformAuthenticate
+) {
+  casinoId =
+    await this.resolveCasinoFromPlatformLogs([
+      log,
+    ]);
 
-      continue;
-    }
+  console.log(
+    'PLATFORM CASINO FALLBACK',
+    casinoId,
+  );
+}
 
+
+  if (!gameId || !casinoId) {
+
+  console.log(
+    'FAILURE MAP SKIP REASON',
+    {
+      errorCode,
+      gameId,
+      casinoId,
+      uuid,
+      platformCasinoId: log?.app?.casinoID,
+      serviceMethod:
+        log?.serviceMethod,
+      appServiceMethod:
+        log?.app?.serviceMethod,
+      stage:
+        log?.stage,
+    },
+  );
+
+  console.log(
+    'LAUNCH FAILURE SKIPPED',
+    {
+      uuid,
+      gameId,
+      casinoId,
+    },
+  );
+
+  continue;
+}
     console.log(
       'LAUNCH FAILURE RESOLVED:',
       {
@@ -3307,7 +3341,7 @@ const launchFailureMap =
       );
     });
 
-const uniqueGameIds = [
+let uniqueGameIds = [
   ...new Set(
     logsToCheck
       .map((log: any) => {
@@ -3330,6 +3364,8 @@ const uniqueGameIds = [
   ),
 ];
 
+
+
     console.log(
       'UNIQUE GAME IDS:',
       uniqueGameIds,
@@ -3350,10 +3386,10 @@ const uniqueGameIds = [
     baseGameIds,
   );
 
-  const launchedGameIds =
-    new Set(
-      uniqueGameIds.map(String),
-    );
+  let launchedGameIds =
+  new Set(
+    uniqueGameIds.map(String),
+  );
 
   const blockedCountriesResponse =
     baseGameIds.length > 0
@@ -3625,6 +3661,52 @@ console.log(
   'LC LOG COUNT:',
   lcLogs.length,
 );
+
+
+if (
+  uniqueGameIds.length === 0 &&
+  lcLogs.length === 0 &&
+  platformLogs.length > 0
+) {
+  uniqueGameIds.push(
+    ...[
+      ...new Set(
+        platformLogs
+          .map((log: any) => {
+            const text = [
+              log?.message,
+              log?.requestLog,
+              log?.responseLog,
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            return text.match(
+              /"game":"([^"]+)"/i,
+            )?.[1];
+          })
+          .filter(Boolean),
+      ),
+    ],
+  );
+
+  console.log(
+    'PLATFORM ONLY GAME IDS:',
+    uniqueGameIds,
+  );
+}
+
+launchedGameIds.clear();
+
+uniqueGameIds.forEach((gameId) =>
+  launchedGameIds.add(String(gameId)),
+);
+
+console.log(
+  'LAUNCHED GAME IDS AFTER FALLBACK:',
+  Array.from(launchedGameIds),
+);
+
 
 if (
   casinoIdsFromLogs.length === 0 &&
@@ -4494,11 +4576,13 @@ console.log(
   {
     is_base_table: true,
 
-    is_launched:
-      launchedGameIds.has(
-        String(baseFamily),
-      ),
-
+   is_launched:
+  launchedGameIds.has(
+    String(baseFamily),
+  ) ||
+  launchFailureMap.has(
+    `${casinoId}_${baseFamily}`,
+  ),
   has_launch_failed: (() => {
     const key =
       `${casinoId}_${baseFamily}`;
