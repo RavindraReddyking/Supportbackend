@@ -293,27 +293,35 @@ for (
 }
   }
 
-  // =====================================================
-  // PLATFORM GAME DETAILS
-  // =====================================================
+ // =====================================================
+// PLATFORM GAME DETAILS
+// =====================================================
 
-  async getCasinoDetails(casinoId: string) {
-const dbenv = this.getDbEnv();
-    return this.database.query(
-      (request) =>
-        request.input(
-          'CasinoId',
-          sql.VarChar(16),
-          casinoId,
-        ),
+async getCasinoDetails(casinoId: string) {
+  const dbenv = this.getDbEnv();
 
-      `
+  return this.database.query(
+    (request) =>
+      request.input(
+        'CasinoId',
+        sql.VarChar(16),
+        casinoId,
+      ),
+
+    `
 SELECT TOP 1
   owc.casino_id,
   c.casino_desc,
   e.login,
   e.name AS env,
-  owc.UCID
+  owc.UCID,
+  CASE
+    WHEN owc.class_name = 'com.extremelivegaming.thirdparty.impl.rgs.RGS_Impl'
+      THEN 'BT'
+    WHEN owc.class_name = 'com.extremelivegaming.thirdparty.impl.rgs.sw.RgsSwServiceImpl'
+      THEN 'SW'
+    ELSE 'Internal'
+  END AS Wallet_Type
 FROM ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
 
 INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
@@ -323,9 +331,10 @@ LEFT JOIN ${dbenv}.casino c WITH (NOLOCK)
   ON c.casino_id = owc.casino_id
 
 WHERE owc.casino_id = @CasinoId
-      `,
-    );
-  }
+`,
+  );
+}
+
 
   // =====================================================
   // TABLE CONFIG
@@ -521,16 +530,98 @@ SELECT DISTINCT
   cu.email_address,
   cu.casino_id,
   cu.active_flag,
-  c.casino_desc
+  c.casino_desc,
+  CASE
+    WHEN owc.class_name = 'com.extremelivegaming.thirdparty.impl.rgs.RGS_Impl'
+      THEN 'BT'
+    WHEN owc.class_name = 'com.extremelivegaming.thirdparty.impl.rgs.sw.RgsSwServiceImpl'
+      THEN 'SW'
+    ELSE 'Internal'
+  END AS wallet_type
 FROM ${dbenv}.casinouser cu WITH (NOLOCK)
+
 INNER JOIN ${dbenv}.casino c WITH (NOLOCK)
   ON c.casino_id = cu.casino_id
+
+LEFT JOIN ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
+  ON owc.casino_id = cu.casino_id
+
 WHERE cu.email_address = @StyleName
 AND cu.usertype_code = 'SYST'
       `,
     );
   }
 
+//Getting casino detais using last 4 digits//
+
+async findCasinoByPlatformIdAndEnv(
+  platformCasinoId: string,
+  envName: string,
+) {
+  const dbenv = this.getDbEnv();
+
+  return this.database.query(
+    (request) =>
+      request
+        .input(
+          'PlatformCasinoId',
+          sql.VarChar(50),
+          platformCasinoId,
+        )
+        .input(
+          'EnvName',
+          sql.VarChar(50),
+          envName,
+        ),
+
+    `
+SELECT TOP 1
+    owc.casino_id,
+    e.env_id,
+    e.name
+FROM ${dbenv}.OneWalletCasino owc WITH (NOLOCK)
+INNER JOIN ${dbenv}.Environment e WITH (NOLOCK)
+    ON e.env_id = owc.env
+WHERE owc.casino_id LIKE '%' + @PlatformCasinoId
+  AND LOWER(e.name) = LOWER(@EnvName)
+    `,
+  );
+}
+
+async findShardedCasinoByPlatformIdAndEnv(
+  platformCasinoId: string,
+  envName: string,
+) {
+  const dbenv = this.getDbEnv();
+
+  return this.database.query(
+    (request) =>
+      request
+        .input(
+          'PlatformCasinoId',
+          sql.VarChar(50),
+          platformCasinoId,
+        )
+        .input(
+          'EnvName',
+          sql.VarChar(50),
+          envName,
+        ),
+
+    `
+SELECT TOP 1
+    o.casino_id,
+    e.name,
+    o.env,
+    o.shardedcasinoid
+FROM ${dbenv}.OneWalletCasino_ShardedEnv o WITH (NOLOCK)
+INNER JOIN ${dbenv}.Environment e WITH (NOLOCK)
+    ON e.env_id = o.env
+WHERE o.shardedCasinoId = @PlatformCasinoId
+  AND LOWER(e.name) = LOWER(@EnvName)
+    `,
+  );
+}
   // =====================================================
   // GAME LAUNCH LOGS (ENTRY SEARCH ✅)
   // =====================================================
@@ -684,7 +775,36 @@ WHERE tc.operator_game_id IN (${ids})
     `,
   );
 }
+//For Sharded Env//
+async getShardedCasinoMappings(
+  casinoId: string,
+) {
+  const dbenv =
+    this.getDbEnv();
 
+  return this.database.query(
+    (request) =>
+      request.input(
+        'CasinoId',
+        sql.VarChar(16),
+        casinoId,
+      ),
+
+    `
+SELECT
+    owc.casino_id,
+    e.env_id,
+    e.name AS env_name,
+    owc.shardedCasinoId
+FROM ${dbenv}.OneWalletCasino_ShardedEnv owc WITH (NOLOCK)
+
+INNER JOIN ${dbenv}.environment e WITH (NOLOCK)
+    ON e.env_id = owc.env
+
+WHERE owc.casino_id = @CasinoId
+    `,
+  );
+}
 //merged lobby config erorrs//
 async searchCasinoMappingErrors(params: {
   ucId: string;

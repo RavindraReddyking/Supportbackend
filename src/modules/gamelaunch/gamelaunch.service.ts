@@ -209,14 +209,20 @@ private resolveGameId(
   const uuid =
     log?.contextMap?.uuid ||
     log?.contextMap?.['uuid:'];
-return (
+let gameId =
   text.match(/gameid=(\d+)/i)?.[1] ||
   text.match(/"gameID":"([^"]+)"/i)?.[1] ||
   text.match(/"operatorGameId":"([^"]+)"/i)?.[1] ||
   text.match(/"ppGame":"([^"]+)"/i)?.[1] ||
-  (uuid ? uuidGameMap.get(uuid) : undefined) ||
-  (uuid ? uuidProcessRequestGameMap.get(uuid) : undefined)
-);
+  (uuid ? uuidGameMap.get(uuid) : undefined);
+
+// fallback only
+if (!gameId && uuid) {
+  gameId =
+    uuidProcessRequestGameMap.get(uuid);
+}
+
+return gameId;
 
 }
 // From logs mapping for missing details//
@@ -1265,6 +1271,131 @@ private resolveLcCasinoId(
       return [];
     }
   }
+  // matcjhing shared env in logs//
+private platformCasinoMatches(
+  casinoId: string,
+  shardedEnv: any[],
+  log: any,
+): boolean {
+
+  const platformCasinoId =
+    String(log?.app?.casinoID || '')
+      .replace(/,/g, '')
+      .trim();
+
+  const stage =
+    String(log?.stage || '')
+      .trim()
+      .toLowerCase();
+
+  const directMatch =
+    this.casinoMatches(
+      casinoId,
+      platformCasinoId,
+    );
+
+  const shardedMatch =
+    shardedEnv.some(
+      (x: any) =>
+        String(x.shardedCasinoId)
+          .replace(/,/g, '')
+          .trim() === platformCasinoId &&
+        stage.includes(
+          String(x.env_name)
+            .trim()
+            .toLowerCase(),
+        ),
+    );
+
+  console.log(
+    'PLATFORM MATCH',
+    {
+      casinoId,
+      platformCasinoId,
+      stage,
+      directMatch,
+      shardedMatch,
+    },
+  );
+
+  return directMatch || shardedMatch;
+}
+//When only playfrom logs present extract casino uisng slot logs//
+private async resolveCasinoFromPlatformLogs(
+  platformLogs: any[],
+): Promise<string | null> {
+
+  for (const log of platformLogs) {
+
+    const platformCasinoId =
+      String(
+        log?.app?.casinoID || '',
+      ).trim();
+
+    const envName =
+      String(
+        log?.stage || '',
+      )
+        .replace(/^prod/i, '')
+        .trim()
+        .toLowerCase();
+
+    if (!platformCasinoId || !envName) {
+      continue;
+    }
+
+    console.log(
+      'PLATFORM LOOKUP',
+      {
+        platformCasinoId,
+        envName,
+      },
+    );
+
+    // Main OWC lookup
+    const mainResult: any =
+  await this.repository
+    .findCasinoByPlatformIdAndEnv(
+      platformCasinoId,
+      envName,
+    );
+
+    let casinoId =
+      mainResult?.recordset?.[0]
+        ?.casino_id;
+
+    if (casinoId) {
+      console.log(
+        'CASINO FOUND IN OWC',
+        casinoId,
+      );
+
+      return String(casinoId);
+    }
+
+    // Sharded lookup
+ const shardedResult: any =
+  await this.repository
+    .findShardedCasinoByPlatformIdAndEnv(
+      platformCasinoId,
+      envName,
+    );
+    casinoId =
+      shardedResult?.recordset?.[0]
+        ?.casino_id;
+
+    if (casinoId) {
+      console.log(
+        'CASINO FOUND IN SHARDED OWC',
+        casinoId,
+      );
+
+      return String(casinoId);
+    }
+  }
+
+  return null;
+}
 
   //Common Helper//
   private buildSessionMaps(logs: any[]) {
@@ -1300,30 +1431,31 @@ private resolveLcCasinoId(
         .filter(Boolean)
         .join(' ');
 
-      const gameId =
-        text.match(/gameid=(\d+)/i)?.[1] ||
-        text.match(/"gameID":"([^"]+)"/)?.[1] ||
-        text.match(/"operatorGameId":"([^"]+)"/)?.[1];
+  const isProcessRequest =
+  text.includes('processRequest GET query string');
 
+const gameId =
+  text.match(/gameid=(\d+)/i)?.[1] ||
+  text.match(/"gameID":"([^"]+)"/)?.[1] ||
+  text.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+  text.match(/"ppGame":"([^"]+)"/)?.[1];
  
 
       const casinoId =
         log?.contextMap?.casinoId;
 
-      if (
-        uuid &&
-        gameId &&
-        !uuidGameMap.has(uuid)
-      ) {
-        uuidGameMap.set(
-          uuid,
-          String(gameId),
-        );
-      }
+   if (
+  !isProcessRequest &&
+  uuid &&
+  gameId &&
+  !uuidGameMap.has(uuid)
+) {
+  uuidGameMap.set(
+    uuid,
+    String(gameId),
+  );
+}
 
-const isProcessRequest =
-  text.includes('ProcessRequest') ||
-  text.includes('/authenticate');
 
 if (
   isProcessRequest &&
@@ -1368,11 +1500,41 @@ if (
   const launchFailureMap =
     new Map<string, boolean>();
 
+    const hasLcLogs =
+  logs.some(
+    (x: any) =>
+      !x?._index?.startsWith(
+        'filebeat-slots',
+      ),
+  );
+
+
   for (const log of logs) {
 
     console.log(
       'PROCESSING LOG',
     );
+
+
+console.log(
+  'FAILURE LOG RAW',
+  JSON.stringify(
+    {
+      serviceMethod:
+        log?.serviceMethod,
+      appServiceMethod:
+        log?.app?.serviceMethod,
+      game:
+        log?.app?.game,
+      casinoID:
+        log?.app?.casinoID,
+      message:
+        log?.message?.substring(0, 500),
+    },
+    null,
+    2,
+  ),
+);
 
     const text = [
       log?.message,
@@ -1386,30 +1548,93 @@ if (
     // =====================================
     // USER API CHECK
     // =====================================
+const platformGameId = String(
+  log?.app?.game ||
+  text.match(/"game":"([^"]+)"/)?.[1] ||
+  '',
+);
 
-    const isUserApi =
-      text.includes(
-        '/RGSGateway/UserAPI/',
-      );
+const isLobbyGame =
+  !!this.GAME_NAME_OVERRIDE[
+    platformGameId
+  ];
+console.log(
+  'FAILURE LOG COUNT:',
+  logs.length,
+);
 
-    console.log(
-      'USERAPI MATCH:',
-      isUserApi,
-    );
+const isUserApi =
+  text.includes(
+    '/RGSGateway/UserAPI/',
+  );
 
-    if (!isUserApi) {
-      continue;
-    }
+const isPlatformAuthenticate =
+  log?.serviceMethod === 'AUTHENTICATE' ||
+  log?.app?.serviceMethod === 'AUTHENTICATE' ||
+  text.includes(
+    '"serviceMethod":"AUTHENTICATE"',
+  ) ||
+  text.includes(
+    'serviceMethod":"AUTHENTICATE"',
+  );
 
+  console.log(
+  'LOG TYPE CHECK',
+  {
+    isLobbyGame,
+    isUserApi,
+    isPlatformAuthenticate,
+  },
+);
+
+// Normal tables -> LC UserAPI
+// Lobby games -> Platform Authenticate
+
+
+if (isLobbyGame) {
+
+  // Old customers
+  if (
+    hasLcLogs &&
+    !isUserApi
+  ) {
+    continue;
+  }
+
+  // Merged customers
+  if (
+    !hasLcLogs &&
+    !isPlatformAuthenticate
+  ) {
+    continue;
+  }
+
+} else {
+
+  if (!isUserApi) {
+    continue;
+  }
+
+}
     // =====================================
     // ERROR CODE DEBUG
     // =====================================
 
-    const errorCode =
-      this.extractErrorCodeFromText(
-        text,
-      );
+let errorCode =
+  this.extractErrorCodeFromText(text);
 
+if (
+  errorCode === null &&
+  isLobbyGame
+) {
+  try {
+    const response = JSON.parse(
+      log?.app?.responseLog?.log || '{}',
+    );
+
+    errorCode = Number(response.error);
+  } catch {}
+}
  
     // Ignore successful auth
     if (
@@ -1423,55 +1648,35 @@ if (
 
       continue;
     }
-
     const uuid =
       log?.contextMap?.uuid ||
       log?.contextMap?.['uuid:'];
 
 
 
-    const gameId =
-      this.resolveGameId(
-        log,
-        uuidGameMap,
-        uuidProcessRequestGameMap,
-      );
+ let gameId =
+  this.resolveGameId(
+    log,
+    uuidGameMap,
+    uuidProcessRequestGameMap,
+  );
 
+if (!gameId && isLobbyGame) {
+  gameId = platformGameId;
+}
     console.log(
       'RESOLVED GAME ID:',
       gameId,
     );
 
-    const casinoId =
-      this.resolveLcCasinoId(
-        log,
-        uuidCasinoMap,
-        ppenvCasinoMap,
-        styleNameCasinoMap,
-        dbCasinoMap,
-      );
-
-    console.log(
-      'CASINO LOOKUP RESULT',
-      {
-        uuid,
-        casinoId,
-        mapValue: uuid
-          ? uuidCasinoMap.get(uuid)
-          : null,
-        ppenv:
-          log?.contextMap?.ppenv,
-      },
-    );
-
-    console.log(
-      'FAILURE LOOKUP:',
-      {
-        uuid,
-        gameId,
-        casinoId,
-      },
-    );
+let casinoId =
+  this.resolveLcCasinoId(
+    log,
+    uuidCasinoMap,
+    ppenvCasinoMap,
+    styleNameCasinoMap,
+    dbCasinoMap,
+  );
 
     if (!gameId || !casinoId) {
       console.log(
@@ -1782,9 +1987,17 @@ console.log(
   ),
 );
 
+const allLogsForFailureCheck = Array.from(
+  new Map(
+    [...logsToCheck, ...fullLogs].map(
+      (x: any) => [x._id, x],
+    ),
+  ).values(),
+);
+
 const launchFailureMap =
   await this.buildLaunchFailureMap(
-    logsToCheck,
+    allLogsForFailureCheck,
     uuidGameMap,
     uuidProcessRequestGameMap,
     uuidCasinoMap,
@@ -1811,6 +2024,11 @@ const launchFailureMap =
     const dbCasino: any =
       casinoDetails?.recordset?.[0];
 
+      console.log(
+  'DB CASINO DETAILS:',
+  JSON.stringify(dbCasino, null, 2),
+);
+
     casinos = [
       {
         casino_id:
@@ -1826,9 +2044,15 @@ const launchFailureMap =
 
         ucid:
           dbCasino?.UCID || '',
+          wallet_type:
+        dbCasino?.Wallet_Type || '',
       },
     ];
   }
+  console.log(
+  'CASINO OBJECT:',
+  JSON.stringify(casinos, null, 2),
+);
 
   const configErrorLogs =
     logsToCheck.filter((log: any) => {
@@ -2008,6 +2232,19 @@ const launchFailureMap =
           'filebeat-slots',
         ),
     );
+const hasLcLogs =
+  lcLogs.length > 0;
+
+const isLobbyGame =
+  !!this.GAME_NAME_OVERRIDE[
+    parsed.symbol.match(/^\d+/)?.[0] ||
+    parsed.symbol
+  ];
+
+console.log({
+  hasLcLogs,
+  isLobbyGame,
+});
 
   const noLogsFound =
     platformLogs.length === 0 &&
@@ -2424,6 +2661,27 @@ const launchFailureMap =
     const casinoTableConfigEventMap =
     new Map<string, any[]>();
 
+    const shardedEnvResponse =
+  await this.repository.getShardedCasinoMappings(
+    casino.casino_id,
+  );
+
+const shardedEnv =
+  (shardedEnvResponse?.recordset || []).map(
+    (row: any) => ({
+      env_id: row.env_id,
+      env_name: String(row.env_name),
+      shardedCasinoId:
+        row.shardedCasinoId,
+    }),
+  );
+
+console.log(
+  'SHARDED ENV:',
+  casino.casino_id,
+  shardedEnv,
+);
+
     for (const [
     key,
     value,
@@ -2556,14 +2814,15 @@ const launchFailureMap =
       ];
     }
   }
-  const casinoPlatformLogs =
-    platformLogs.filter(
-      (log: any) =>
-        this.casinoMatches(
-          casino.casino_id,
-          log?.app?.casinoID,
-        ),
-    );
+const casinoPlatformLogs =
+  platformLogs.filter(
+    (log: any) =>
+      this.platformCasinoMatches(
+        casino.casino_id,
+        shardedEnv,
+        log,
+      ),
+  );
   const casinoLcLogsResolved =
   lcLogs.map((log: any) => {
     const resolvedCasinoId =
@@ -2597,6 +2856,11 @@ const casinoLcLogs =
       casinoTableConfigEventMap,
     );
 
+console.log(
+  'WALLET TYPE BEFORE RESPONSE:',
+  casino.wallet_type,
+);
+
   casinoData.push({
     casino_id:
       result.casino_id,
@@ -2612,6 +2876,9 @@ const casinoLcLogs =
 
     casino_active_flag:
       result.casino_active_flag,
+      sharded_env: shardedEnv,
+      wallet_type:
+      casino.wallet_type || '',
 
     config_error: [
       ...configErrors,
@@ -2903,9 +3170,17 @@ console.log(
   ),
 );
 
+const allLogsForFailureCheck = Array.from(
+  new Map(
+    [...logsToCheck, ...fullLogs].map(
+      (x: any) => [x._id, x],
+    ),
+  ).values(),
+);
+
 const launchFailureMap =
   await this.buildLaunchFailureMap(
-    logsToCheck,
+    allLogsForFailureCheck,
     uuidGameMap,
     uuidProcessRequestGameMap,
     uuidCasinoMap,
@@ -3032,27 +3307,29 @@ const launchFailureMap =
       );
     });
 
-  const uniqueGameIds = [
-    ...new Set(
-      logsToCheck
-        .map((log: any) => {
-          const text = [
-            log?.message,
-            log?.requestLog,
-            log?.responseLog,
-          ]
-            .filter(Boolean)
-            .join(' ');
+const uniqueGameIds = [
+  ...new Set(
+    logsToCheck
+      .map((log: any) => {
+        const text = [
+          log?.message,
+          log?.requestLog,
+          log?.responseLog,
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-          return (
-            text.match(/"gameID":"([^"]+)"/)?.[1] ||
-            text.match(/"operatorGameId":"([^"]+)"/)?.[1]||
-            text.match(/"ppGame":"([^"]+)"/)?.[1]
-          );
-        })
-        .filter(Boolean),
-    ),
-  ];
+        return (
+          text.match(/gameid=(\d+)/i)?.[1] ||
+          text.match(/"gameID":"([^"]+)"/)?.[1] ||
+          text.match(/"operatorGameId":"([^"]+)"/)?.[1] ||
+          text.match(/"ppGame":"([^"]+)"/)?.[1]
+        );
+      })
+      .filter(Boolean),
+  ),
+];
+
     console.log(
       'UNIQUE GAME IDS:',
       uniqueGameIds,
@@ -3123,9 +3400,10 @@ const casinoIdsFromLogs = [
   ),
 ];
 
-  let casinos: any[] = [];
-  const matchedCasinoId =
-    casinoIdsFromLogs[0] || null;
+let casinos: any[] = [];
+
+let matchedCasinoId =
+  casinoIdsFromLogs[0] || null;
 
   console.log(
     'CASINOS FOUND IN LOGS =>',
@@ -3148,6 +3426,11 @@ const casinoIdsFromLogs = [
     casinoDetails?.recordset?.[0];
 
     console.log(
+  'DB CASINO DETAILS:',
+  JSON.stringify(dbCasino, null, 2),
+);
+
+    console.log(
     'DB CASINO DETAILS:',
     JSON.stringify(dbCasino),
   );
@@ -3165,10 +3448,16 @@ const casinoIdsFromLogs = [
 
       ucid:
         dbCasino?.UCID || '',
+        wallet_type:
+        dbCasino?.Wallet_Type || '',
     },
   ];
   }
 
+  console.log(
+  'CASINO OBJECT:',
+  JSON.stringify(casinos, null, 2),
+);
 
   let tableConfigs: any[] = [];
   let tableFamilies: any[] = [];
@@ -3327,6 +3616,85 @@ const casinoIdsFromLogs = [
           ),
       );
 
+      console.log(
+  'PLATFORM LOG COUNT:',
+  platformLogs.length,
+);
+
+console.log(
+  'LC LOG COUNT:',
+  lcLogs.length,
+);
+
+if (
+  casinoIdsFromLogs.length === 0 &&
+  lcLogs.length === 0 &&
+  platformLogs.length > 0
+) {
+  console.log(
+    'NO LC LOGS FOUND. ATTEMPTING PLATFORM-ONLY CASINO RESOLUTION',
+  );
+
+  const platformCasinoId =
+    await this.resolveCasinoFromPlatformLogs(
+      platformLogs,
+    );
+
+if (platformCasinoId) {
+  casinoIdsFromLogs.push(
+    platformCasinoId,
+  );
+
+  matchedCasinoId =
+    casinoIdsFromLogs[0] || null;
+
+  console.log(
+    'CASINO RESOLVED FROM PLATFORM LOGS:',
+    platformCasinoId,
+  );
+}
+}
+
+if (
+  casinos.length === 0 &&
+  matchedCasinoId
+) {
+  const casinoDetails =
+    await this.repository.getCasinoDetails(
+      matchedCasinoId,
+    );
+
+  const dbCasino: any =
+    casinoDetails?.recordset?.[0];
+
+  if (dbCasino) {
+    casinos = [
+      {
+        casino_id: matchedCasinoId,
+
+        casino_desc:
+          dbCasino?.casino_desc || '',
+
+        active_flag: null,
+
+        env:
+          dbCasino?.env || '',
+
+        ucid:
+          dbCasino?.UCID || '',
+
+        wallet_type:
+          dbCasino?.Wallet_Type || '',
+      },
+    ];
+  }
+
+  console.log(
+    'PLATFORM RESOLVED CASINO OBJECT:',
+    JSON.stringify(casinos, null, 2),
+  );
+}
+
   const has521 =
     this.has521Error(
       lcLogs,
@@ -3342,6 +3710,8 @@ const casinoIdsFromLogs = [
     'HAS 521:',
     has521,
   );
+
+   
 
   let platformConfig = null;
   let platformConfigInfo: any = [];
@@ -3799,6 +4169,27 @@ console.log(
       ),
     ]);
 
+    const shardedEnvResponse =
+  await this.repository.getShardedCasinoMappings(
+    casino.casino_id,
+  );
+
+const shardedEnv =
+  (shardedEnvResponse?.recordset || []).map(
+    (row: any) => ({
+      env_id: row.env_id,
+      env_name: String(row.env_name),
+      shardedCasinoId:
+        row.shardedCasinoId,
+    }),
+  );
+
+console.log(
+  'SHARDED ENV:',
+  casino.casino_id,
+  shardedEnv,
+);
+
   for (const gameId of uniqueGameIds as string[]) {
 
     const tableConfig =
@@ -3910,14 +4301,15 @@ console.log(
       tableConfigEventMap,
     );
 
-      const casinoPlatformLogs =
-        platformLogs.filter(
-          (log: any) =>
-            this.casinoMatches(
-              casino.casino_id,
-              log?.app?.casinoID,
-            ),
-        );
+  const casinoPlatformLogs =
+  platformLogs.filter(
+    (log: any) =>
+      this.platformCasinoMatches(
+        casino.casino_id,
+        shardedEnv,
+        log,
+      ),
+  );
  const casinoLcLogsResolved =
   lcLogs.map((log: any) => {
     const resolvedCasinoId =
@@ -3944,6 +4336,11 @@ const casinoLcLogs =
       `${log.contextMap.resolvedCasinoId}` ===
       `${casino.casino_id}`,
   );
+console.log(
+  'WALLET TYPE BEFORE RESPONSE:',
+  casino.wallet_type,
+);
+
       casinoData.push({
         casino_id:
           casino.casino_id,
@@ -3962,6 +4359,9 @@ const casinoLcLogs =
     '',
         casino_active_flag:
           casino.active_flag,
+          sharded_env: shardedEnv,
+          wallet_type:
+          casino.wallet_type || '',
     config_error: [
     ...configErrors,
     ...ucidConfigErrors,
