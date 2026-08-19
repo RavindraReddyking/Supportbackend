@@ -212,7 +212,7 @@ for (
   attempt <= maxAttempts;
   attempt++
 ) {
-  let timeout = 7000;
+  let timeout = 15000;
 
   if (attempt === 5) {
     timeout = 65000;

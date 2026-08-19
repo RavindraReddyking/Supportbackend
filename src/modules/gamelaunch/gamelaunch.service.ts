@@ -73,9 +73,89 @@ import {
       process.env.INTERNAL_API_URL ||
       'http://localhost:4001';
 
+
+    // For defining market type//
+    private getMarketType(
+  playerCountry: string,
+  playerRegion: string,
+): string {
+  const regulatedMarkets = [
+    'AB', 'AQ', 'GG', 'X3', 'AT', 'BS', 'BY', 'BE', 'BR', 'X1', 'X2',
+    'BG', 'CO', 'CZ', 'DK', 'EE', 'GE', 'DE', 'GR', 'HU', 'IE', 'IM',
+    'IT', 'LV', 'LT', 'MT', 'MX', 'NO', 'ON', 'PR', 'PE', 'PH', 'PT',
+    'RO', 'RS', 'SK', 'SI', 'ZA', 'ES', 'SE', 'CH', 'NL', 'UA', 'UK',
+    'GB',
+  ];
+
+  const geoBlockedCountries = [
+    'US', 'FR', 'IL', 'TW', 'AU',
+    'KP', 'IN', 'SG', 'IR', 'AE',
+  ];
+
+  if (
+    regulatedMarkets.includes(playerCountry) ||
+    regulatedMarkets.includes(playerRegion)
+  ) {
+    return 'Regulated Market';
+  }
+
+  if (geoBlockedCountries.includes(playerCountry)) {
+    return 'Geo Block Country';
+  }
+
+  return 'Unregulated Market';
+}
+
+
+
+//No Logs found case//
+
+private buildHasLogsMap(
+  logs: any[],
+  uuidGameMap: Map<string, string>,
+  uuidProcessRequestGameMap: Map<string, string>,
+  uuidCasinoMap: Map<string, string>,
+  ppenvCasinoMap: Map<string, string>,
+  styleNameCasinoMap: Map<string, string>,
+  dbCasinoMap: Map<string, string>,
+) {
+  const hasLogsMap =
+    new Map<string, boolean>();
+
+  for (const log of logs) {
+    const gameId =
+      this.resolveGameId(
+        log,
+        uuidGameMap,
+        uuidProcessRequestGameMap,
+      );
+
+    const casinoId =
+      this.resolveLcCasinoId(
+        log,
+        uuidCasinoMap,
+        ppenvCasinoMap,
+        styleNameCasinoMap,
+        dbCasinoMap,
+      );
+
+    if (!gameId || !casinoId) {
+      continue;
+    }
+
+    hasLogsMap.set(
+      `${casinoId}_${gameId}`,
+      true,
+    );
+  }
+
+  return hasLogsMap;
+}
     // =====================================================
     // HELPERS
     // =====================================================
+
+
 
 private buildStyleNameCasinoMap(
   logs: any[],
@@ -736,17 +816,17 @@ private resolveLcCasinoId(
   ];
 
   const geoBlockedCountries = [
-    'US',
-    'FR',
-    'IL',
-    'TW',
-    'AU',
-    'KP',
-    'IN',
-    'SG',
-    'IR',
-    'AE',
-  ];
+  'US', // United States
+  'FR', // France
+  'IL', // Israel
+  'TW', // Taiwan
+  'AU', // Australia
+  'KP', // North Korea
+  'IN', // India
+  'SG', // Singapore
+  'IR', // Iran
+  'AE', // United Arab Emirates
+];
 
     const blockedRegions =
       String(
@@ -858,18 +938,24 @@ private resolveLcCasinoId(
     unblockedRegions.includes(
       playerRegion,
     );
+
+    
     if (
     !jurisdictionMatched &&
     isRegulatedMarket &&
     !explicitlyAllowed
   )
   {
+     const marketType = this.getMarketType(
+  playerCountry,
+  playerRegion,
+);
     return {
       category:
         'REGULATED_MARKET_BLOCK',
 
-      recommendation:
-        `${playerCountry}/${playerRegion} is a regulated market and is not allowed in accessible/unblocked settings.`,
+recommendation:
+  `${playerCountry}/${playerRegion} is a ${marketType} country and playing from this country is not allowed as per brand settings. Please contact RNG Tech Support for further assistance.`
     };
   }
 
@@ -890,46 +976,57 @@ private resolveLcCasinoId(
     ),
   );
   if (
-    geoBlockedCountries.includes(
+  geoBlockedCountries.includes(
+    playerCountry,
+  ) &&
+  !unblockedCountries.includes(
+    playerCountry,
+  ) &&
+  !unblockedRegions.includes(
+    playerRegion,
+  )
+) {
+  const marketType = this.getMarketType(
+    playerCountry,
+    playerRegion,
+  );
+
+  return {
+    category: 'PLATFORM_GEOIP_BLOCK',
+
+    recommendation:
+      `${playerCountry}/${playerRegion} is a ${marketType} country and playing from this country is not allowed as per brand settings. Please contact RNG Tech Support for further assistance.`,
+  };
+}
+
+if (
+  accessibleJurisdictions.length > 0 &&
+  !explicitlyAllowed
+) {
+  const marketType =
+    this.getMarketType(
       playerCountry,
-    ) &&
-    !unblockedCountries.includes(
-      playerCountry,
-    ) &&
-    !unblockedRegions.includes(
       playerRegion,
-    )
-  ) {
-    return {
-      category:
-        'PLATFORM_GEOIP_BLOCK',
+    );
 
-      recommendation:
-        `${playerCountry}/${playerRegion} is blocked by default platform GeoIP restrictions.`,
-    };
+  return {
+    category:
+      'ACCESSIBLE_JURISDICTION_BLOCK',
+
+    recommendation:
+      `${playerCountry}/${playerRegion} is an ${marketType}. Unregulated markets are allowed by default unless explicitly restricted. However, this casino is configured with restricted Accessible Jurisdictions and the player's country/region is not included in the allowed list. Please contact RNG Tech Support for further assistance.`,
+  };
+}
+   return {
+  category: 'UNKNOWN_521',
+
+  recommendation:
+    `${playerCountry}/${playerRegion} is a ${this.getMarketType(
+      playerCountry,
+      playerRegion,
+    )} country and is not blocked as per brand settings. The most likely reason is that the table is not certified or available for this jurisdiction under the current brand. Please contact RNG Tech Support for further assistance.`,
+};
   }
-  if (
-    accessibleJurisdictions.length > 0 &&
-    !explicitlyAllowed
-  ) {
-    return {
-      category:
-        'ACCESSIBLE_JURISDICTION_BLOCK',
-
-      recommendation:
-        'Player jurisdiction is not present in accessible/unblocked settings.',
-    };
-  }
-
-    return {
-      category:
-        'UNKNOWN_521',
-
-      recommendation:
-        'No blocking condition was identified in platform configuration. Please contact the Platform team for further RCA',
-    };
-  }
-
 
 
 
@@ -2040,6 +2137,17 @@ const launchFailureMap =
     dbCasinoMap,
   );
 
+  const hasLogsMap =
+  this.buildHasLogsMap(
+    allLogsForFailureCheck,
+    uuidGameMap,
+    uuidProcessRequestGameMap,
+    uuidCasinoMap,
+    ppenvCasinoMap,
+    styleNameCasinoMap,
+    dbCasinoMap,
+  );
+
   const matchedCasinoId =
     logsToCheck.find(
       (x: any) =>
@@ -2678,7 +2786,7 @@ console.log({
         analysis.recommendation,
 
       prohibited_message:
-        'No logs found. RCA based on platform configuration.',
+        'No logs were found on either the Platform or LC side for the provided launch URL. The table is enabled on both Platform and LC. Based on the available information, this appears to be a jurisdiction-related  specific to this table. Please contact RNG Tech Support for further investigation.',
     },
   );
 
@@ -2781,7 +2889,7 @@ console.log(
         recommendation:
           analysis.recommendation,
         prohibited_message:
-          'No logs found. RCA based on platform configuration.',
+          'No logs were found on either the Platform or LC side for the provided launch URL. The table is enabled on both Platform and LC. Based on the available information, this appears to be a jurisdiction-related restriction specific to this table. Please contact RNG Tech Support for further investigation.'
       },
     );
   }
@@ -2814,6 +2922,7 @@ console.log(
       lcBlockedCountryMap,
       launchedGameIds,
       launchFailureMap,
+      hasLogsMap,
     );
 
     let ucidConfigErrors: any[] = [];
@@ -3228,6 +3337,17 @@ const launchFailureMap =
     Array.from(
       launchFailureMap.entries(),
     ),
+  );
+
+const hasLogsMap =
+  this.buildHasLogsMap(
+    allLogsForFailureCheck,
+    uuidGameMap,
+    uuidProcessRequestGameMap,
+    uuidCasinoMap,
+    ppenvCasinoMap,
+    styleNameCasinoMap,
+    dbCasinoMap,
   );
 
   const configErrorLogs =
@@ -4299,6 +4419,7 @@ console.log(
       lcBlockedCountryMap,
       launchedGameIds,
       launchFailureMap,
+      hasLogsMap,
     );
 
         if (!firstResult) {
@@ -4515,17 +4636,18 @@ console.log(
   // =====================================================
   // ✅ FINAL BUILD CASINO RESULT
   // =====================================================
-  private buildCasinoResult(
-    casino: any,
-    symbol: string,
-    tableConfig: any,
-    tableFamily: any[],
-    lcTables: any[],
-    platformGames: any,
-    lcBlockedCountryMap: Map<string, any[]>,
-    launchedGameIds: Set<string>,
-    launchFailureMap: Map<string, boolean>,
-  )
+private buildCasinoResult(
+  casino: any,
+  symbol: string,
+  tableConfig: any,
+  tableFamily: any[],
+  lcTables: any[],
+  platformGames: any,
+  lcBlockedCountryMap: Map<string, any[]>,
+  launchedGameIds: Set<string>,
+  launchFailureMap: Map<string, boolean>,
+  hasLogsMap: Map<string, boolean>,
+)
   {
     const casinoId =
       casino.casino_id;
@@ -4575,6 +4697,10 @@ console.log(
   table_info: [
   {
     is_base_table: true,
+    has_logs:
+  hasLogsMap.get(
+    `${casinoId}_${baseFamily}`,
+  ) || false,
 
    is_launched:
   launchedGameIds.has(
@@ -4644,6 +4770,10 @@ console.log(
   .map(
     (table: any) => ({
       is_base_table: false,
+      has_logs:
+  hasLogsMap.get(
+    `${casinoId}_${table.operator_game_id}`,
+  ) || false,
 
       is_launched:
         launchedGameIds.has(
