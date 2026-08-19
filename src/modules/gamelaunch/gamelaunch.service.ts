@@ -106,7 +106,44 @@ import {
   return 'Unregulated Market';
 }
 
+//adding gameid to logs//
+private resolveOperatorGameIdForLog(
+  log: any,
+  uuidGameMap: Map<string, string>,
+  uuidProcessRequestGameMap: Map<string, string>,
+): string {
+  const isPlatformLog =
+    log?._index?.startsWith('filebeat-slots');
 
+  const text = [
+    log?.message,
+    log?.requestLog,
+    log?.responseLog,
+    log?.error,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  // Platform logs
+  if (isPlatformLog) {
+    return (
+      String(
+        log?.app?.game ||
+        text.match(/"game":"([^"]+)"/)?.[1] ||
+        '',
+      )
+    );
+  }
+
+  // LC logs
+  return (
+    this.resolveGameId(
+      log,
+      uuidGameMap,
+      uuidProcessRequestGameMap,
+    ) || ''
+  );
+}
 
 //No Logs found case//
 
@@ -3039,20 +3076,22 @@ console.log(
         log_type:
           'PLATFORM',
 
-        logs:
-          this.mapLogs(
-            casinoPlatformLogs,
-          ),
+      logs: this.mapLogs(
+  casinoPlatformLogs,
+  uuidGameMap,
+  uuidProcessRequestGameMap,
+)
       },
 
       {
         log_type:
           'LC',
 
-        logs:
-          this.mapLogs(
-            casinoLcLogs,
-          ),
+      logs: this.mapLogs(
+  casinoLcLogs,
+  uuidGameMap,
+  uuidProcessRequestGameMap,
+)
       },
     ],
   });
@@ -4581,20 +4620,22 @@ console.log(
             log_type:
               'PLATFORM',
 
-            logs:
-              this.mapLogs(
-                casinoPlatformLogs,
-              ),
+            logs: this.mapLogs(
+  casinoPlatformLogs,
+  uuidGameMap,
+  uuidProcessRequestGameMap,
+)
           },
 
           {
             log_type:
               'LC',
 
-            logs:
-              this.mapLogs(
-                casinoLcLogs,
-              ),
+          logs: this.mapLogs(
+  casinoLcLogs,
+  uuidGameMap,
+  uuidProcessRequestGameMap,
+)
           },
         ],
       });
@@ -5204,7 +5245,11 @@ private buildCasinoResult(
   }
 
 
-    private mapLogs(logs: any[]) {
+    private mapLogs(
+  logs: any[],
+  uuidGameMap: Map<string, string>,
+  uuidProcessRequestGameMap: Map<string, string>,
+) {
       return logs.map(
         (log: any) => ({
           _id:
@@ -5222,6 +5267,12 @@ private buildCasinoResult(
       : this.getLcLogLevel(
           log,
         ),
+        operator_game_id:
+  this.resolveOperatorGameIdForLog(
+    log,
+    uuidGameMap,
+    uuidProcessRequestGameMap,
+  ),
 
           timestamp:
             log?.[
