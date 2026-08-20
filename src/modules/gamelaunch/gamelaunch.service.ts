@@ -75,27 +75,123 @@ import {
 
 
     // For defining market type//
+private readonly regulatedMarkets = [
+  'AB',
+  'AQ',
+  'GG',
+  'X3',
+  'AT',
+  'BS',
+  'BY',
+  'BE',
+  'BR',
+  'X1',
+  'X2',
+  'BG',
+  'CO',
+  'CZ',
+  'DK',
+  'EE',
+  'GE',
+  'DE',
+  'GR',
+  'HU',
+  'IE',
+  'IM',
+  'IT',
+  'LV',
+  'LT',
+  'MT',
+  'MX',
+  'NO',
+  'ON',
+  'PR',
+  'PE',
+  'PH',
+  'PT',
+  'RO',
+  'RS',
+  'SK',
+  'SI',
+  'ZA',
+  'ES',
+  'SE',
+  'CH',
+  'NL',
+  'UA',
+  'UK',
+  'GB',
+];
+
     private getMarketType(
   playerCountry: string,
   playerRegion: string,
 ): string {
-  const regulatedMarkets = [
-    'AB', 'AQ', 'GG', 'X3', 'AT', 'BS', 'BY', 'BE', 'BR', 'X1', 'X2',
-    'BG', 'CO', 'CZ', 'DK', 'EE', 'GE', 'DE', 'GR', 'HU', 'IE', 'IM',
-    'IT', 'LV', 'LT', 'MT', 'MX', 'NO', 'ON', 'PR', 'PE', 'PH', 'PT',
-    'RO', 'RS', 'SK', 'SI', 'ZA', 'ES', 'SE', 'CH', 'NL', 'UA', 'UK',
-    'GB',
-  ];
+const regulatedMarkets = [
+  'AB', // Alberta (Canada)
+  'AQ', // Antarctica
+  'GG', // Guernsey
+  'X3', // Internal/Custom Market Code
+  'AT', // Austria
+  'BS', // Bahamas
+  'BY', // Belarus
+  'BE', // Belgium
+  'BR', // Brazil
+  'X1', // Internal/Custom Market Code
+  'X2', // Internal/Custom Market Code
+  'BG', // Bulgaria
+  'CO', // Colombia
+  'CZ', // Czech Republic
+  'DK', // Denmark
+  'EE', // Estonia
+  'GE', // Georgia
+  'DE', // Germany
+  'GR', // Greece
+  'HU', // Hungary
+  'IE', // Ireland
+  'IM', // Isle of Man
+  'IT', // Italy
+  'LV', // Latvia
+  'LT', // Lithuania
+  'MT', // Malta
+  'MX', // Mexico
+  'NO', // Norway
+  'ON', // Ontario (Canada)
+  'PR', // Puerto Rico
+  'PE', // Peru
+  'PH', // Philippines
+  'PT', // Portugal
+  'RO', // Romania
+  'RS', // Serbia
+  'SK', // Slovakia
+  'SI', // Slovenia
+  'ZA', // South Africa
+  'ES', // Spain
+  'SE', // Sweden
+  'CH', // Switzerland
+  'NL', // Netherlands
+  'UA', // Ukraine
+  'UK', // United Kingdom
+  'GB', // United Kingdom (ISO Code)
+];
 
-  const geoBlockedCountries = [
-    'US', 'FR', 'IL', 'TW', 'AU',
-    'KP', 'IN', 'SG', 'IR', 'AE',
-  ];
+const geoBlockedCountries = [
+  'US', // United States
+  'FR', // France
+  'IL', // Israel
+  'TW', // Taiwan
+  'AU', // Australia
+  'KP', // North Korea
+  'IN', // India
+  'SG', // Singapore
+  'IR', // Iran
+  'AE', // United Arab Emirates
+];
 
-  if (
-    regulatedMarkets.includes(playerCountry) ||
-    regulatedMarkets.includes(playerRegion)
-  ) {
+if (
+  this.regulatedMarkets.includes(playerCountry) ||
+  this.regulatedMarkets.includes(playerRegion)
+) {
     return 'Regulated Market';
   }
 
@@ -779,294 +875,329 @@ private resolveLcCasinoId(
   };
   }
 
-
-  private analyze521(
-    playerCountry: string,
-    playerRegion: string,
-    jurisdictionSettings: any,
-    countrySettings: any,
-    regionSettings: any,
-  ) {
-    const blockedCountries =
-      String(
-        countrySettings?.casinoBlockedCountries ||
-        '',
-      )
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean);
-
-        const unblockedCountries =
+  // Platfrom level block validation checks//
+private analyze521(
+  playerCountry: string,
+  playerRegion: string,
+  jurisdictionSettings: any,
+  countrySettings: any,
+  regionSettings: any,
+) {
+  const blockedCountries =
     String(
-      countrySettings?.unblockedCountries ||
-      '',
+      countrySettings?.casinoBlockedCountries || '',
     )
       .split(',')
-      .map((x) => x.trim())
+      .map((x) => x.trim().toUpperCase())
       .filter(Boolean);
-      const regulatedMarkets = [
-    'AB', // Alberta
-    'AQ', // Alberta
-    'GG', // Alderney
-    'X3', // Argentina Other
-    'AT', // Austria
-    'BS', // Bahamas
-    'BY', // Belarus
-    'BE', // Belgium
-    'BR', // Brazil
-    'X1', // Buenos Aires City
-    'X2', // Buenos Aires Province
-    'BG', // Bulgaria
-    'CO', // Colombia
-    'CZ', // Czech Republic
-    'DK', // Denmark
-    'EE', // Estonia
-    'GE', // Georgia
-    'DE', // Germany
-    'GR', // Greece
-    'HU', // Hungary
-    'IE', // Ireland
-    'IM', // Isle of Man
-    'IT', // Italy
-    'LV', // Latvia
-    'LT', // Lithuania
-    'MT', // Malta
-    'MX', // Mexico
-    'NO', // Norway
-    'ON', // Ontario
-    'PR', // Parana (Brazil)
-    'PE', // Peru
-    'PH', // Philippines
-    'PT', // Portugal
-    'RO', // Romania
-    'RS', // Serbia
-    'SK', // Slovakia
-    'SI', // Slovenia
-    'ZA', // South Africa
-    'ES', // Spain
-    'SE', // Sweden
-    'CH', // Switzerland
-    'NL', // Netherlands
-    'UA', // Ukraine
-    'UK', // United Kingdom
-    'GB'
-  ];
 
-  const geoBlockedCountries = [
-  'US', // United States
-  'FR', // France
-  'IL', // Israel
-  'TW', // Taiwan
-  'AU', // Australia
-  'KP', // North Korea
-  'IN', // India
-  'SG', // Singapore
-  'IR', // Iran
-  'AE', // United Arab Emirates
-];
-
-    const blockedRegions =
-      String(
-        regionSettings?.casinoBlockedRegions ||
-        '',
-      )
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean);
-
-        const unblockedRegions =
+  const unblockedCountries =
     String(
-      regionSettings?.unblockedRegions ||
-      '',
+      countrySettings?.unblockedCountries || '',
     )
       .split(',')
-      .map((x) => x.trim())
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean);
+
+  const blockedRegions =
+    String(
+      regionSettings?.casinoBlockedRegions || '',
+    )
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean);
+
+  const unblockedRegions =
+    String(
+      regionSettings?.unblockedRegions || '',
+    )
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
       .filter(Boolean);
 
   const accessibleJurisdictions =
     String(
-      jurisdictionSettings?.accessibleJurisdictions ||
-      '',
+      jurisdictionSettings?.accessibleJurisdictions || '',
     )
       .split(',')
-      .map((x) => x.trim())
+      .map((x) => x.trim().toUpperCase())
       .filter(Boolean);
 
-  const casinoJurisdiction =
+  const jurisdictionPriority =
+    String(
+      jurisdictionSettings?.jurisdictionPriority ||
+      'Allowed to all',
+    )
+      .trim()
+      .toUpperCase();
+
+  const casinoJurisdictions =
     String(
       jurisdictionSettings?.casinoJurisdiction ||
-      '',
-    ).trim();
-  const jurisdictionMatched =
-    casinoJurisdiction &&
-    casinoJurisdiction !== '99' &&
-    casinoJurisdiction.toUpperCase() !== 'ALL' &&
-    (
-      playerCountry === casinoJurisdiction ||
-      playerRegion === casinoJurisdiction
-    );
+      'Allowed to all',
+    )
+      .split(',')
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean);
 
-    if (
-      blockedCountries.includes(
-        playerCountry,
-      )
-    ) {
-      return {
-        category:
-          'CASINO_COUNTRY_BLOCK',
+  playerCountry =
+    String(playerCountry || '')
+      .trim()
+      .toUpperCase();
 
-        recommendation:
-          'Player country exists in casino blocked countries.',
-      };
-    }
+  playerRegion =
+    String(playerRegion || '')
+      .trim()
+      .toUpperCase();
 
-    if (
-      blockedRegions.includes(
-        playerRegion,
-      )
-    ) {
-      return {
-        category:
-          'CASINO_REGION_BLOCK',
-
-        recommendation:
-          'Player region exists in casino blocked regions.',
-      };
-    }
-  
+  const geoBlockedCountries = [
+    'US',
+    'FR',
+    'IL',
+    'TW',
+    'AU',
+    'KP',
+    'IN',
+    'SG',
+    'IR',
+    'AE',
+  ];
 
   // =====================================================
-  // CANADA REGION RESTRICTIONS
-  // ON and AB must be explicitly present in unblockedRegions
+  // HARDCODED CASINO BLOCKS ALWAYS WIN
+  // =====================================================
+
+  if (
+    blockedCountries.includes(
+      playerCountry,
+    )
+  ) {
+    return {
+      category:
+        'CASINO_COUNTRY_BLOCK',
+
+      recommendation:
+        `Player country ${playerCountry} exists in Casino Blocked Countries.`,
+    };
+  }
+
+  if (
+    blockedRegions.includes(
+      playerRegion,
+    )
+  ) {
+    return {
+      category:
+        'CASINO_REGION_BLOCK',
+
+      recommendation:
+        `Player region ${playerRegion} exists in Casino Blocked Regions.`,
+    };
+  }
+
+  // =====================================================
+  // CANADA SPECIAL CASE
   // =====================================================
 
   if (
     playerCountry === 'CA' &&
     ['ON', 'AB'].includes(playerRegion) &&
-    !unblockedRegions.includes(playerRegion)
+    !unblockedRegions.includes(
+      playerRegion,
+    )
   ) {
     return {
       category:
         'RESTRICTED_REGION_BLOCK',
 
       recommendation:
-        `${playerCountry}/${playerRegion} must be explicitly present in unblockedRegions.`,
+        `${playerCountry}/${playerRegion} must be explicitly present in Unblocked Regions.`,
     };
   }
 
-  const isRegulatedMarket =
-    regulatedMarkets.includes(
-      playerCountry,
-    ) ||
-    regulatedMarkets.includes(
-      playerRegion,
-    );
+  // =====================================================
+  // GEO BLOCK CHECK
+  // =====================================================
 
-  const explicitlyAllowed =
-    accessibleJurisdictions.includes(
-      playerCountry,
-    ) ||
-    accessibleJurisdictions.includes(
-      playerRegion,
-    ) ||
-    unblockedCountries.includes(
-      playerCountry,
-    ) ||
-    unblockedRegions.includes(
-      playerRegion,
-    );
-
-    
-    if (
-    !jurisdictionMatched &&
-    isRegulatedMarket &&
-    !explicitlyAllowed
-  )
-  {
-     const marketType = this.getMarketType(
-  playerCountry,
-  playerRegion,
-);
-    return {
-      category:
-        'REGULATED_MARKET_BLOCK',
-
-recommendation:
-  `${playerCountry}/${playerRegion} is a ${marketType} country and playing from this country is not allowed as per brand settings. Please contact RNG Tech Support for further assistance.`
-    };
-  }
-
-  console.log(
-    'PLAYER COUNTRY:',
-    JSON.stringify(playerCountry),
-  );
-
-  console.log(
-    'UNBLOCKED COUNTRIES:',
-    JSON.stringify(unblockedCountries),
-  );
-
-  console.log(
-    'GEO BLOCKED:',
+  if (
     geoBlockedCountries.includes(
       playerCountry,
-    ),
-  );
-  if (
-  geoBlockedCountries.includes(
-    playerCountry,
-  ) &&
-  !unblockedCountries.includes(
-    playerCountry,
-  ) &&
-  !unblockedRegions.includes(
-    playerRegion,
-  )
-) {
-  const marketType = this.getMarketType(
-    playerCountry,
-    playerRegion,
-  );
-
-  return {
-    category: 'PLATFORM_GEOIP_BLOCK',
-
-    recommendation:
-      `${playerCountry}/${playerRegion} is a ${marketType} country and playing from this country is not allowed as per brand settings. Please contact RNG Tech Support for further assistance.`,
-  };
-}
-
-if (
-  accessibleJurisdictions.length > 0 &&
-  !explicitlyAllowed
-) {
-  const marketType =
-    this.getMarketType(
+    ) &&
+    !unblockedCountries.includes(
       playerCountry,
+    ) &&
+    !unblockedRegions.includes(
       playerRegion,
-    );
+    )
+  ) {
+    return {
+      category:
+        'PLATFORM_GEOIP_BLOCK',
+
+      recommendation:
+        `Player location ${playerCountry}/${playerRegion} belongs to a known GeoIP restricted market. Platform GeoIP validation is the most likely cause of the 521 Unsupported Jurisdiction response.`,
+    };
+  }
+
+  // =====================================================
+  // REGULATED MARKET CHECK
+  // =====================================================
+
+  const regulatedPlayer =
+    this.regulatedMarkets.includes(playerCountry) ||
+    this.regulatedMarkets.includes(playerRegion);
+
+  const explicitlyUnblocked =
+    unblockedCountries.includes(playerCountry) ||
+    unblockedRegions.includes(playerRegion);
+
+  // =====================================================
+  // DEFAULT PRIORITY
+  // ACCESSIBLE JURISDICTIONS = SOURCE OF TRUTH
+  // =====================================================
+
+  if (
+    jurisdictionPriority === 'DEFAULT' &&
+    regulatedPlayer
+  ) {
+    const accessibleIsAllowedToAll =
+      accessibleJurisdictions.some(
+        (x) =>
+          x === 'ALLOWED TO ALL',
+      );
+
+    const explicitlyAccessible =
+      accessibleJurisdictions.includes(
+        playerCountry,
+      ) ||
+      accessibleJurisdictions.includes(
+        playerRegion,
+      );
+
+    if (
+      !explicitlyAccessible &&
+      !explicitlyUnblocked
+    ) {
+      return {
+        category:
+          'REGULATED_MARKET_NOT_ALLOWED',
+
+        recommendation:
+          accessibleIsAllowedToAll
+            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Accessible Jurisdictions is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
+            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is not present in Accessible Jurisdictions or Unblocked Countries/Regions.`,
+      };
+    }
+  }
+
+  // =====================================================
+  // ALLOWED TO ALL PRIORITY
+  // ACCESSIBLE JURISDICTIONS = SOURCE OF TRUTH
+  // =====================================================
+
+  if (
+    jurisdictionPriority.includes(
+      'ALLOWED',
+    ) &&
+    regulatedPlayer
+  ) {
+    const accessibleIsAllowedToAll =
+      accessibleJurisdictions.some(
+        (x) =>
+          x === 'ALLOWED TO ALL',
+      );
+
+    const explicitlyAccessible =
+      accessibleJurisdictions.includes(
+        playerCountry,
+      ) ||
+      accessibleJurisdictions.includes(
+        playerRegion,
+      );
+
+    if (
+      !explicitlyAccessible &&
+      !explicitlyUnblocked
+    ) {
+      return {
+        category:
+          'REGULATED_MARKET_NOT_ALLOWED',
+
+        recommendation:
+          accessibleIsAllowedToAll
+            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Accessible Jurisdictions is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
+            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is not present in Accessible Jurisdictions or Unblocked Countries/Regions.`,
+      };
+    }
+
+    return {
+      category:
+        'GAME_LEVEL_JURISDICTION_BLOCK',
+
+      recommendation:
+        `Jurisdiction Priority is Allowed To All and no visible country or region restriction explains the 521 response. The restriction is likely caused by internal game jurisdiction validation or platform jurisdiction logic that is not exposed through available APIs.`,
+    };
+  }
+
+  // =====================================================
+  // MASTER PRIORITY
+  // CASINO JURISDICTION = SOURCE OF TRUTH
+  // =====================================================
+
+  if (
+    jurisdictionPriority === 'MASTER' &&
+    regulatedPlayer
+  ) {
+    const casinoIsAllowedToAll =
+      casinoJurisdictions.some(
+        (x) =>
+          x === 'ALLOWED TO ALL',
+      );
+
+    const playerIsCasinoJurisdiction =
+      casinoJurisdictions.includes(
+        playerCountry,
+      ) ||
+      casinoJurisdictions.includes(
+        playerRegion,
+      );
+
+    if (
+      !playerIsCasinoJurisdiction &&
+      !explicitlyUnblocked
+    ) {
+      return {
+        category:
+          'REGULATED_MARKET_NOT_UNBLOCKED',
+
+        recommendation:
+          casinoIsAllowedToAll
+            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Casino Jurisdiction is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
+            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Under MASTER priority the market is not covered by Casino Jurisdiction (${casinoJurisdictions.join(', ')}) and is not present in Unblocked Countries/Regions.`,
+      };
+    }
 
   return {
-    category:
-      'ACCESSIBLE_JURISDICTION_BLOCK',
-
-    recommendation:
-      `${playerCountry}/${playerRegion} is an ${marketType}. Unregulated markets are allowed by default unless explicitly restricted. However, this casino is configured with restricted Accessible Jurisdictions and the player's country/region is not included in the allowed list. Please contact RNG Tech Support for further assistance.`,
-  };
-}
-   return {
-  category: 'UNKNOWN_521',
+  category:
+    'REGULATED_MARKET_ALLOWED_BUT_BLOCKED',
 
   recommendation:
-    `${playerCountry}/${playerRegion} is a ${this.getMarketType(
-      playerCountry,
-      playerRegion,
-    )} country and is not blocked as per brand settings. The most likely reason is that the table is not certified or available for this jurisdiction under the current brand. Please contact RNG Tech Support for further assistance.`,
+    `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is explicitly allowed through Accessible Jurisdictions or Unblocked Countries/Regions. No visible configuration restriction explains the 521 response. Further investigation of platform jurisdiction resolution or game-level validation is required.`,
 };
   }
 
+  // =====================================================
+  // FINAL FALLBACK
+  // =====================================================
 
+  return {
+    category:
+      'GAME_LEVEL_JURISDICTION_BLOCK',
 
+    recommendation:
+      `Player location ${playerCountry}/${playerRegion} is not blocked by visible casino configuration. The 521 Unsupported Jurisdiction response is likely caused by internal game jurisdiction requirements, casino jurisdiction mappings, or platform jurisdiction resolution logic that cannot be validated through available APIs.`,
+  };
+}
     // =====================================================
     // PLATFORM ENABLED GAMES
     // =====================================================
@@ -2327,19 +2458,10 @@ const launchFailureMap =
           );
         });
 
-      const hasLcBlockMessage =
-        msg.includes(
-          'Prohibited Jurisdictions',
-        ) ||
-        msg.includes(
-          'You are not allowed to play Live Dealer',
-        ) ||
-        msg.includes(
-          'Auth error jurisdiction',
-        ) ||
-        msg.includes(
-          'IP is not allowed for blocked country',
-        );
+ const hasLcBlockMessage =
+  msg.includes(
+    'IP is not allowed for blocked country',
+  );
 
       return (
         hasError0InSameSession &&
@@ -3480,19 +3602,10 @@ const hasLogsMap =
           );
         });
 
-      const hasLcBlockMessage =
-        msg.includes(
-          'Prohibited Jurisdictions',
-        ) ||
-        msg.includes(
-          'You are not allowed to play Live Dealer',
-        ) ||
-        msg.includes(
-          'Auth error jurisdiction',
-        ) ||
-        msg.includes(
-          'IP is not allowed for blocked country',
-        );
+  const hasLcBlockMessage =
+  msg.includes(
+    'IP is not allowed for blocked country',
+  );
 
       return (
         hasError0InSameSession &&
@@ -4159,17 +4272,8 @@ console.log(
         /"ipRegion":"([^"]+)"/,
       )?.[1] || '';
 
-    const prohibitedMessage =
-      relatedText.includes(
-        'IP is not allowed for blocked country',
-      )
-        ? 'IP is not allowed for blocked country'
-        : relatedText.includes(
-            'Auth error jurisdiction',
-          )
-          ? 'Auth error jurisdiction'
-          : log?.message ||
-            'You are not allowed to play Live Dealer';
+ const prohibitedMessage =
+  'IP is not allowed for blocked country';
 
     this.pushTableConfigEvent(
       tableConfigEventMap,
