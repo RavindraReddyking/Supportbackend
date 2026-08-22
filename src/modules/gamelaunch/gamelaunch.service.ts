@@ -3018,40 +3018,7 @@ console.log(
         matchedCasinoConfig,
       );
 
-  if (
-    noLogsFound &&
-    parsed.country
-  ) {
-    const analysis =
-      this.analyze521(
-        parsed.country,
-        '',
-        matchedCasinoConfig?.configuration
-          ?.jurisdictionSettings,
-        matchedCasinoConfig?.configuration
-          ?.countrySettings,
-        matchedCasinoConfig?.configuration
-          ?.regionSettings,
-      );
-
-    this.pushTableConfigEvent(
-      casinoTableConfigEventMap,
-      parsed.symbol,
-      {
-        timestamp: '',
-        player_ip: '',
-        player_country: parsed.country,
-        player_region: '',
-        session_id: '',
-        lc_level_block: false,
-        block_level: 'PLATFORM',
-        recommendation:
-          analysis.recommendation,
-        prohibited_message:
-          'No logs were found on either the Platform or LC side for the provided launch URL. The table is enabled on both Platform and LC. Based on the available information, this appears to be a jurisdiction-related restriction specific to this table. Please contact RNG Tech Support for further investigation.'
-      },
-    );
-  }
+    
 
   } catch (error) {
     casinoPlatformConfig = [];
@@ -3083,6 +3050,48 @@ console.log(
       launchFailureMap,
       hasLogsMap,
     );
+
+const launchedTable =
+  result.table_info.find(
+    (x: any) =>
+      String(x.operator_game_id) ===
+      String(parsed.symbol),
+  );
+
+if (
+  noLogsFound &&
+  parsed.country &&
+  launchedTable?.is_launched &&
+  launchedTable?.platform_enabled &&
+  launchedTable?.lc_enabled &&
+  !launchedTable?.has_logs
+) {
+  const analysis =
+    this.analyze521(
+      parsed.country,
+      '',
+      matchedCasinoConfig?.configuration?.jurisdictionSettings,
+      matchedCasinoConfig?.configuration?.countrySettings,
+      matchedCasinoConfig?.configuration?.regionSettings,
+    );
+
+  this.pushTableConfigEvent(
+    casinoTableConfigEventMap,
+    parsed.symbol,
+    {
+      timestamp: '',
+      player_ip: '',
+      player_country: parsed.country,
+      player_region: '',
+      session_id: '',
+      lc_level_block: false,
+      block_level: 'PLATFORM',
+      recommendation: analysis.recommendation,
+      prohibited_message:
+        'The table is enabled on both LC and Platform sides; however, no logs were found for the selected duration. The possible reason for the game launch failure might be a platform-level restriction or validation occurring before the request reaches LC services. Please cross-check with RNG Tech Support and provide the launch URL for further investigation.',
+    },
+  );
+}
 
     let ucidConfigErrors: any[] = [];
     if (result?.ucid) {
