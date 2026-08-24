@@ -79,19 +79,37 @@ async investigate(
   @Req() request: Request,
 ) {
   try {
-    const response = body.token
-      ? await this.service.investigateSession({
+    const investigationPromise = body.token
+      ? this.service.investigateSession({
           token: body.token,
           startDate: body.startDate,
           endDate: body.endDate,
-          cookies: request?.headers?.cookie || '',
+          cookies:
+            request?.headers?.cookie || '',
         })
-      : await this.service.investigate({
+      : this.service.investigate({
           url: body.url,
           startDate: body.startDate,
           endDate: body.endDate,
-          cookies: request?.headers?.cookie || '',
+          cookies:
+            request?.headers?.cookie || '',
         });
+
+    const response = await Promise.race([
+      investigationPromise,
+
+      new Promise((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                'INVESTIGATION_TIMEOUT',
+              ),
+            ),
+          180000, // 3 minutes
+        ),
+      ),
+    ]);
 
     return response;
   } catch (error: any) {
@@ -99,15 +117,36 @@ async investigate(
     console.error('GAME LAUNCH ERROR');
     console.error(error);
     console.error(error?.stack);
-    console.error('STATUS:', error?.response?.status);
-    console.error('RESPONSE:', error?.response?.data);
+    console.error(
+      'STATUS:',
+      error?.response?.status,
+    );
+    console.error(
+      'RESPONSE:',
+      error?.response?.data,
+    );
     console.error('=========================');
+
+    if (
+      error?.message ===
+      'INVESTIGATION_TIMEOUT'
+    ) {
+      return {
+        success: false,
+        error_code:
+          'INVESTIGATION_TIMEOUT',
+        message:
+          'The investigation exceeded the maximum execution time of 3 minutes and was automatically terminated. Please narrow the search criteria and try again.',
+      };
+    }
 
     return {
       success: false,
       error: error?.message,
-      response: error?.response?.data,
-      status: error?.response?.status,
+      response:
+        error?.response?.data,
+      status:
+        error?.response?.status,
     };
   }
 }

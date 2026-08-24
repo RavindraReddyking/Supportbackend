@@ -284,6 +284,43 @@ private buildHasLogsMap(
 
   return hasLogsMap;
 }
+
+//Timeout after 3 mins//
+
+async investigateWithTimeout(params: {
+  url: string;
+  startDate?: string;
+  endDate?: string;
+  cookies?: string;
+}) {
+  try {
+    return await Promise.race([
+      this.investigate(params),
+
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('INVESTIGATION_TIMEOUT')),
+          180000, // 3 mins
+        ),
+      ),
+    ]);
+  } catch (error: any) {
+    if (
+      error.message ===
+      'INVESTIGATION_TIMEOUT'
+    ) {
+      return {
+        success: false,
+        error_code:
+          'INVESTIGATION_TIMEOUT',
+        message:
+          'Investigation terminated because execution exceeded 3 minutes.',
+      };
+    }
+
+    throw error;
+  }
+}
     // =====================================================
     // HELPERS
     // =====================================================
@@ -966,35 +1003,21 @@ private analyze521(
   // =====================================================
   // HARDCODED CASINO BLOCKS ALWAYS WIN
   // =====================================================
+if (blockedCountries.includes(playerCountry)) {
+  return {
+    category: 'CASINO_COUNTRY_BLOCK',
+    recommendation:
+      `Access blocked for ${playerCountry}/${playerRegion}. The country ${playerCountry} is explicitly listed in the Casino Blocked Countries configuration, preventing access from this location.`,
+  };
+}
 
-  if (
-    blockedCountries.includes(
-      playerCountry,
-    )
-  ) {
-    return {
-      category:
-        'CASINO_COUNTRY_BLOCK',
-
-      recommendation:
-        `Player country ${playerCountry} exists in Casino Blocked Countries.`,
-    };
-  }
-
-  if (
-    blockedRegions.includes(
-      playerRegion,
-    )
-  ) {
-    return {
-      category:
-        'CASINO_REGION_BLOCK',
-
-      recommendation:
-        `Player region ${playerRegion} exists in Casino Blocked Regions.`,
-    };
-  }
-
+if (blockedRegions.includes(playerRegion)) {
+  return {
+    category: 'CASINO_REGION_BLOCK',
+    recommendation:
+      `Access blocked for ${playerCountry}/${playerRegion}. The region ${playerRegion} is explicitly listed in the Casino Blocked Regions configuration, preventing access from this location.`,
+  };
+}
   // =====================================================
   // CANADA SPECIAL CASE
   // =====================================================
@@ -1011,7 +1034,7 @@ private analyze521(
         'RESTRICTED_REGION_BLOCK',
 
       recommendation:
-        `${playerCountry}/${playerRegion} must be explicitly present in Unblocked Regions.`,
+        `Access blocked for ${playerCountry}/${playerRegion}. This Canadian region is subject to regional jurisdiction controls and must be explicitly included in the Unblocked Regions configuration. No matching entry was found for ${playerCountry}/${playerRegion}, therefore access has been blocked.`
     };
   }
 
@@ -1030,13 +1053,11 @@ private analyze521(
       playerRegion,
     )
   ) {
-    return {
-      category:
-        'PLATFORM_GEOIP_BLOCK',
-
-      recommendation:
-        `Player location ${playerCountry}/${playerRegion} belongs to a known GeoIP restricted market. Platform GeoIP validation is the most likely cause of the 521 Unsupported Jurisdiction response.`,
-    };
+  return {
+  category: 'PLATFORM_GEOIP_BLOCK',
+  recommendation:
+    `Access blocked for ${playerCountry}/${playerRegion}. This location belongs to a known GeoIP-restricted market. Based on the available configuration, platform-level GeoIP validation is the most likely cause of the 521 Unsupported Jurisdiction response.`,
+};
   }
 
   // =====================================================
@@ -1078,15 +1099,13 @@ private analyze521(
       !explicitlyAccessible &&
       !explicitlyUnblocked
     ) {
-      return {
-        category:
-          'REGULATED_MARKET_NOT_ALLOWED',
-
-        recommendation:
-          accessibleIsAllowedToAll
-            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Accessible Jurisdictions is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
-            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is not present in Accessible Jurisdictions or Unblocked Countries/Regions.`,
-      };
+    return {
+  category: 'REGULATED_MARKET_NOT_ALLOWED',
+  recommendation:
+    accessibleIsAllowedToAll
+      ? `Access blocked for ${playerCountry}/${playerRegion}. The market is regulated. Although Accessible Jurisdictions is configured as Allowed To All, regulated markets must be explicitly included in the Unblocked Countries/Regions list. The location ${playerCountry}/${playerRegion} is not present in that list.`
+      : `Access blocked for ${playerCountry}/${playerRegion}. The market is regulated and is not included in the configured Accessible Jurisdictions or the Unblocked Countries/Regions list.`,
+};
     }
   }
 
@@ -1120,23 +1139,19 @@ private analyze521(
       !explicitlyUnblocked
     ) {
       return {
-        category:
-          'REGULATED_MARKET_NOT_ALLOWED',
-
-        recommendation:
-          accessibleIsAllowedToAll
-            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Accessible Jurisdictions is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
-            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is not present in Accessible Jurisdictions or Unblocked Countries/Regions.`,
-      };
+  category: 'REGULATED_MARKET_NOT_ALLOWED',
+  recommendation:
+    accessibleIsAllowedToAll
+      ? `Access blocked for ${playerCountry}/${playerRegion}. This is a regulated market. Although Accessible Jurisdictions is configured as Allowed To All, regulated markets must be explicitly included in the Unblocked Countries/Regions configuration. No matching entry was found for ${playerCountry}/${playerRegion}.`
+      : `Access blocked for ${playerCountry}/${playerRegion}. This is a regulated market and is not covered by the configured Accessible Jurisdictions of the brand. Additionally, ${playerCountry}/${playerRegion} is not included in the Unblocked Countries/Regions configuration.`,
+};
     }
 
-    return {
-      category:
-        'GAME_LEVEL_JURISDICTION_BLOCK',
-
-      recommendation:
-        `Jurisdiction Priority is Allowed To All and no visible country or region restriction explains the 521 response. The restriction is likely caused by internal game jurisdiction validation or platform jurisdiction logic that is not exposed through available APIs.`,
-    };
+ return {
+  category: 'GAME_LEVEL_JURISDICTION_BLOCK',
+  recommendation:
+    `Access blocked for ${playerCountry}/${playerRegion}. Jurisdiction Priority is configured as Allowed To All, and no visible country or region restriction has been identified that would explain the 521 Unsupported Jurisdiction response. The restriction is likely caused by internal game-level jurisdiction validation, casino jurisdiction mappings, or platform jurisdiction resolution logic that is not exposed to LC.`,
+};
   }
 
   // =====================================================
@@ -1166,23 +1181,19 @@ private analyze521(
       !playerIsCasinoJurisdiction &&
       !explicitlyUnblocked
     ) {
-      return {
-        category:
-          'REGULATED_MARKET_NOT_UNBLOCKED',
-
-        recommendation:
-          casinoIsAllowedToAll
-            ? `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Casino Jurisdiction is configured as Allowed To All. Regulated markets must still be explicitly present in Unblocked Countries/Regions.`
-            : `Player location ${playerCountry}/${playerRegion} belongs to a regulated market. Under MASTER priority the market is not covered by Casino Jurisdiction (${casinoJurisdictions.join(', ')}) and is not present in Unblocked Countries/Regions.`,
-      };
+     return {
+  category: 'REGULATED_MARKET_NOT_UNBLOCKED',
+  recommendation:
+    casinoIsAllowedToAll
+      ? `Access blocked for ${playerCountry}/${playerRegion}. This is a regulated market. Although Casino Jurisdiction is configured as Allowed To All, regulated markets must be explicitly included in the Casino Unblocked Countries/Regions configuration. No matching entry was found for ${playerCountry}/${playerRegion}; therefore, access has been blocked.`
+      : `Access blocked for ${playerCountry}/${playerRegion}. This is a regulated market. Casino Jurisdiction was set to (${casinoJurisdictions.join(', ')}) so, regulated markets must be explicitly included in the Casino Unblocked Countries/Regions configuration. No matching entry was found for ${playerCountry}/${playerRegion}; therefore, access has been blocked.`,
+};
     }
 
-  return {
-  category:
-    'REGULATED_MARKET_ALLOWED_BUT_BLOCKED',
-
+return {
+  category: 'REGULATED_MARKET_ALLOWED_BUT_BLOCKED',
   recommendation:
-    `Player location ${playerCountry}/${playerRegion} belongs to a regulated market and is explicitly allowed through Accessible Jurisdictions or Unblocked Countries/Regions. No visible configuration restriction explains the 521 response. Further investigation of platform jurisdiction resolution or game-level validation is required.`,
+    `Access blocked for ${playerCountry}/${playerRegion}, despite the market being explicitly allowed through Accessible Jurisdictions or the Unblocked Countries/Regions configuration. No jurisdiction-related configuration issue has been identified that would explain the 521 response. Further investigation of platform jurisdiction resolution, game-level restrictions is required.`,
 };
   }
 
@@ -1190,13 +1201,11 @@ private analyze521(
   // FINAL FALLBACK
   // =====================================================
 
-  return {
-    category:
-      'GAME_LEVEL_JURISDICTION_BLOCK',
-
-    recommendation:
-      `Player location ${playerCountry}/${playerRegion} is not blocked by visible casino configuration. The 521 Unsupported Jurisdiction response is likely caused by internal game jurisdiction requirements, casino jurisdiction mappings, or platform jurisdiction resolution logic that cannot be validated through available APIs.`,
-  };
+return {
+  category: 'GAME_LEVEL_JURISDICTION_BLOCK',
+  recommendation:
+    `Access blocked for ${playerCountry}/${playerRegion}. No blocking condition was identified in the visible casino jurisdiction configuration. The 521 Unsupported Jurisdiction response is likely caused by game-level jurisdiction restrictions, internal casino jurisdiction mappings, or platform jurisdiction resolution logic that cannot be validated through the available data on LC.`,
+};
 }
     // =====================================================
     // PLATFORM ENABLED GAMES
