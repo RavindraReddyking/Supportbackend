@@ -5212,7 +5212,8 @@ private buildCasinoResult(
           parsed.searchParams.get(
             'environmentID',
           ) || '',
-
+        tc:
+      parsed.searchParams.get('tc') || '',
         ppToken:
           parsed.searchParams.get(
             'ppToken',
