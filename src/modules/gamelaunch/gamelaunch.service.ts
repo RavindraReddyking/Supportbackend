@@ -47,26 +47,13 @@ import {
     /*private readonly rgsSecret =
       process.env.RGS_SECRET || ''; */
 
-      private getRgsSecret(): string {
-  const nodeEnv =
-    process.env.NODE_ENV?.toLowerCase();
-
-  const secret =
-    nodeEnv === 'prelive'
-      ? 'testKey'
-      : 'ESWLTOxIH8qAZt';
-
+  private getRgsSecret(): string {
   console.log(
-    'NODE_ENV:',
-    nodeEnv,
+    'RGS_SECRET:',
+    process.env.RGS_SECRET,
   );
 
-  console.log(
-    'RGS SECRET USED:',
-    secret,
-  );
-
-  return secret;
+  return process.env.RGS_SECRET || '';
 }
 
     private readonly internalApiUrl =

@@ -95,20 +95,22 @@ private getFilebeatIndex(
 
 //temporay fix//
 private getDbEnv(): string {
-  const env =
-    process.env.NODE_ENV?.toLowerCase() === 'prelive'
-      ? 'prelive0.dbo'
-      : 'live.dbo';
+  console.log('===== DB ENV DEBUG =====');
 
   console.log(
-    'DB ENV RESOLVED:',
-    process.env.NODE_ENV,
-    '=>',
-    env,
+    'dbenv from env:',
+    process.env.dbenv,
   );
 
-  return env;
+  if (!process.env.dbenv) {
+    console.error(
+      'dbenv is not defined!',
+    );
+  }
+
+  return process.env.dbenv || '';
 }
+
   // =====================================================
   // SEARCH FILEBEAT LOGS (✅ UPDATED WITH DSL SUPPORT)
   // =====================================================
