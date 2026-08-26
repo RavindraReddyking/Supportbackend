@@ -176,6 +176,7 @@ private getCasinoIndexesByEnv(
     return [query1, query2, query3, query4];
   }
 private async runGameQueries(params: any) {
+ 
   const startTime = Date.now();
 
   const gameId = this.clean(params.gameId);
@@ -187,6 +188,8 @@ const casinoIndexes =
   );
 
   const results = await Promise.all([
+
+    
     // ✅ Query 1
     this.searchFilebeatLogs({
       from: params.from,
@@ -335,8 +338,40 @@ const casinoIndexes =
       },
     },
   },
+}),
+ 
+  // Query 6
+this.searchFilebeatLogs({
+  from: params.from,
+  to: params.to,
+  index: casinoIndexes,
+  bodyOverride: {
+    size: 2000,
+    sort: [{ '@timestamp': { order: 'asc' } }],
+    query: {
+      bool: {
+        filter: [
+          { match_phrase: { "contextMap.gameId": gameId } },
+          { match_phrase: { "message": userId } },
+          {
+            match_phrase: {
+              "message": "timeout setting wants card action"
+            }
+          },
+          {
+            range: {
+              "@timestamp": {
+                gte: params.from,
+                lte: params.to,
+              },
+            },
+          },
+        ],
+      },
+    },
+  },
 })
-  ]);
+ ]);
 
   // ✅ Merge + dedupe
   const combined = results.flat();
