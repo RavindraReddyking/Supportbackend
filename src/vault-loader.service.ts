@@ -11,6 +11,11 @@ export class VaultLoaderService implements OnModuleInit {
 
       const secrets = await this.vaultService.getSecrets();
 
+      console.log(
+  'RGS_SECRET exists:',
+  !!secrets.RGS_SECRET,
+);
+
       for (const key of Object.keys(secrets)) {
         process.env[key] = secrets[key];
       }
