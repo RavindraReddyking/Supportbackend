@@ -47,14 +47,6 @@ import {
     /*private readonly rgsSecret =
       process.env.RGS_SECRET || ''; */
 
-  private getRgsSecret(): string {
-  console.log(
-    'RGS_SECRET:',
-    process.env.RGS_SECRET,
-  );
-
-  return process.env.RGS_SECRET || '';
-}
 
     private readonly internalApiUrl =
       process.env.INTERNAL_API_URL ||
@@ -307,6 +299,64 @@ async investigateWithTimeout(params: {
 
     throw error;
   }
+}
+
+
+//To decrypt the secret//
+private decryptSecret(
+  encryptedSecret: string,
+  password: string,
+): string {
+  const key = Buffer.from(
+    password,
+    'utf8',
+  );
+
+if (![16, 24, 32].includes(key.length)) {
+  throw new Error(
+    `Invalid AES key length: ${key.length}`,
+  );
+}
+
+const algorithm =
+  key.length === 16
+    ? 'aes-128-ecb'
+    : key.length === 24
+    ? 'aes-192-ecb'
+    : 'aes-256-ecb';
+
+  const decipher =
+    crypto.createDecipheriv(
+      algorithm,
+      key,
+      null,
+    );
+
+  decipher.setAutoPadding(true);
+
+  let decrypted =
+    decipher.update(
+      encryptedSecret,
+      'base64',
+      'utf8',
+    );
+
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+//get valut pasword//
+private getVaultPassword(): string {
+  const password =
+    process.env['env.secret.password'];
+
+  if (!password) {
+    throw new Error(
+      'Vault password not found',
+    );
+  }
+
+  return password;
 }
     // =====================================================
     // HELPERS
@@ -1215,13 +1265,33 @@ return {
         );
       }
 
-      const login = String(
-        data.login,
-      ).trim();
+   const login = String(
+  data.login,
+).trim();
 
-      const env = String(
-        data.env,
-      ).trim();
+const encryptedSecret =
+  String(data.enc_secret);
+
+const env = String(
+  data.env,
+).trim();
+
+const vaultPassword =
+  this.getVaultPassword();
+
+
+
+const rgsSecret =
+  this.decryptSecret(
+    encryptedSecret,
+    vaultPassword,
+  );
+
+console.log(
+  'Secret decrypted successfully:',
+  !!rgsSecret,
+);
+
       const apiEnv = this.getApiEnv(env);
 
       const UCID = data.UCID;
@@ -1245,13 +1315,13 @@ return {
       const strForHmac =
         `GET-${timestamp}-${pathForHmac}`;
 
-      const hmacMd5 = crypto
-       .createHmac(
-  'md5',
-  this.getRgsSecret(),
-)
-        .update(strForHmac)
-        .digest('hex');
+    const hmacMd5 = crypto
+  .createHmac(
+    'md5',
+    rgsSecret,
+  )
+  .update(strForHmac)
+  .digest('hex');
 
       const rgsHash = Buffer.from(
         hmacMd5,
@@ -1361,13 +1431,31 @@ return {
       );
     }
 
-    const login = String(
-      data.login,
-    ).trim();
+   const login = String(
+  data.login,
+).trim();
 
-    const env = String(
-      data.env,
-    ).trim();
+const encryptedSecret =
+  String(data.enc_secret);
+
+const env = String(
+  data.env,
+).trim();
+
+const vaultPassword =
+  this.getVaultPassword();
+
+const rgsSecret =
+  this.decryptSecret(
+    encryptedSecret,
+    vaultPassword,
+  );
+
+console.log(
+  'Secret decrypted successfully:',
+  !!rgsSecret,
+);
+
     const apiEnv = this.getApiEnv(env);
 
     const UCID = data.UCID;
@@ -1388,13 +1476,13 @@ return {
     const strForHmac =
       `POST-${timestamp}-${pathForHmac}`;
 
-    const hmacMd5 = crypto
-    .createHmac(
-  'md5',
-  this.getRgsSecret(),
-)
-      .update(strForHmac)
-      .digest('hex');
+const hmacMd5 = crypto
+  .createHmac(
+    'md5',
+    rgsSecret,
+  )
+  .update(strForHmac)
+  .digest('hex');
 
     const rgsHash = Buffer.from(
       hmacMd5,

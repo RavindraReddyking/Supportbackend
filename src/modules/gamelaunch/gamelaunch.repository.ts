@@ -315,7 +315,9 @@ SELECT TOP 1
   owc.casino_id,
   c.casino_desc,
   e.login,
+  e.enc_secret,
   e.name AS env,
+  e.env_id,
   owc.UCID,
   CASE
     WHEN owc.class_name = 'com.extremelivegaming.thirdparty.impl.rgs.RGS_Impl'
